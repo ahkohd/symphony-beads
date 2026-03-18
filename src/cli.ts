@@ -9,6 +9,8 @@
 //   init      Initialize a new WORKFLOW.md
 //   instances List all running symphony instances
 //   doctor    Verify dependencies, config, and runtime state
+//   logs      Tail the symphony log file
+//   stop      Stop a running symphony instance
 //
 // Global flags:
 //   --json          JSON output
@@ -27,6 +29,7 @@ import { WorkflowWatcher } from "./watcher.ts";
 import { log, setJsonMode, isJsonMode, setLogFile } from "./log.ts";
 import { PrMonitor } from "./pr-monitor.ts";
 import { runDoctor } from "./doctor.ts";
+import { HttpDashboard } from "./server.ts";
 import {
   acquireLock,
   releaseLock,
@@ -34,6 +37,8 @@ import {
   unregisterInstance,
   checkWorkspaceCollisions,
   listInstances,
+  readProjectLock,
+  isPidAlive,
 } from "./lock.ts";
 
 const VERSION = "0.1.0";
@@ -44,7 +49,11 @@ interface Args {
   command: string;
   json: boolean;
   workflow: string;
+  port: number | null;
   verbose: boolean;
+  follow: boolean;
+  lines: number;
+  all: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -52,7 +61,11 @@ function parseArgs(argv: string[]): Args {
     command: "",
     json: false,
     workflow: "WORKFLOW.md",
+    port: null,
     verbose: false,
+    follow: false,
+    lines: 50,
+    all: false,
   };
 
   const positional: string[] = [];
@@ -70,6 +83,22 @@ function parseArgs(argv: string[]): Args {
         break;
       case "--verbose":
         args.verbose = true;
+        break;
+      case "--port":
+        args.port = parseInt(argv[++i] ?? "", 10);
+        if (isNaN(args.port) || args.port < 1) args.port = null;
+        break;
+      case "-f":
+      case "--follow":
+        args.follow = true;
+        break;
+      case "--lines":
+      case "-n":
+        args.lines = parseInt(argv[++i] ?? "50", 10);
+        if (isNaN(args.lines) || args.lines < 1) args.lines = 50;
+        break;
+      case "--all":
+        args.all = true;
         break;
       case "-h":
       case "--help":
@@ -383,6 +412,112 @@ async function cmdDoctor(args: Args): Promise<void> {
   if (!report.ok) process.exit(1);
 }
 
+async function cmdLogs(args: Args): Promise<void> {
+  const workflow = await loadWorkflow(args.workflow);
+  const logFile = workflow.config.log.file;
+
+  if (!logFile) {
+    if (args.json) {
+      console.log(JSON.stringify({ error: "no_log_file", message: "no log file configured in WORKFLOW.md (log.file)" }));
+    } else {
+      log.error("no log file configured in WORKFLOW.md (log.file)");
+    }
+    process.exit(1);
+  }
+
+  const resolvedPath = resolve(dirname(args.workflow), logFile);
+  const file = Bun.file(resolvedPath);
+
+  if (!(await file.exists())) {
+    if (args.json) {
+      console.log(JSON.stringify({ error: "log_file_not_found", path: resolvedPath }));
+    } else {
+      log.error(`log file not found: ${resolvedPath}`);
+    }
+    process.exit(1);
+  }
+
+  // Read and output the last N lines
+  const content = await file.text();
+  const allLines = content.split("\n");
+  // Remove trailing empty line from split
+  if (allLines.length > 0 && allLines[allLines.length - 1] === "") {
+    allLines.pop();
+  }
+
+  const startIdx = Math.max(0, allLines.length - args.lines);
+  const tailLines = allLines.slice(startIdx);
+
+  if (args.json) {
+    // Output raw JSON log lines — each line in the log file is already JSON
+    for (const line of tailLines) {
+      if (line.trim()) console.log(line);
+    }
+  } else {
+    for (const line of tailLines) {
+      if (line.trim()) console.log(line);
+    }
+  }
+
+  // Follow mode: watch file for new content and stream it
+  if (args.follow) {
+    let offset = content.length;
+    const { watch } = await import("fs");
+
+    const watcher = watch(resolvedPath, async () => {
+      try {
+        const f = Bun.file(resolvedPath);
+        const size = f.size;
+        if (size <= offset) {
+          // File was truncated/rotated — reset
+          if (size < offset) offset = 0;
+          return;
+        }
+        const newContent = await f.slice(offset, size).text();
+        offset = size;
+        const newLines = newContent.split("\n");
+        for (const line of newLines) {
+          if (line.trim()) console.log(line);
+        }
+      } catch {
+        // File may have been removed — ignore
+      }
+    });
+
+    // Also poll periodically since fs.watch may miss events on some systems
+    const pollInterval = setInterval(async () => {
+      try {
+        const f = Bun.file(resolvedPath);
+        const size = f.size;
+        if (size <= offset) {
+          if (size < offset) offset = 0;
+          return;
+        }
+        const newContent = await f.slice(offset, size).text();
+        offset = size;
+        const newLines = newContent.split("\n");
+        for (const line of newLines) {
+          if (line.trim()) console.log(line);
+        }
+      } catch {
+        // ignore
+      }
+    }, 1000);
+
+    // Keep process alive; clean up on SIGINT/SIGTERM
+    const cleanup = () => {
+      watcher.close();
+      clearInterval(pollInterval);
+      process.exit(0);
+    };
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
+
+    // Block forever
+    await new Promise(() => {});
+  }
+}
+
 // -- Helpers -----------------------------------------------------------------
 
 async function loadWorkflow(path: string) {
@@ -412,13 +547,22 @@ Commands:
   init       Create a new WORKFLOW.md
   instances  List all running symphony instances
   doctor     Verify dependencies, config, and runtime state
+  logs       Tail the symphony log file
+  stop       Stop a running symphony instance
 
 Flags:
   --json           Output as JSON
   --workflow PATH   Workflow file (default: WORKFLOW.md)
   --verbose         Verbose output
   -h, --help        Show this help
-  -v, --version     Show version`);
+  -v, --version     Show version
+
+Logs flags:
+  -f, --follow     Follow the log file (like tail -f)
+  -n, --lines N    Number of lines to show (default: 50)
+
+Stop flags:
+  --all            Stop all registered symphony instances`);
 }
 
 function printVersion(json: boolean): void {
@@ -526,6 +670,12 @@ async function main(): Promise<void> {
       break;
     case "doctor":
       await cmdDoctor(args);
+      break;
+    case "logs":
+      await cmdLogs(args);
+      break;
+    case "stop":
+      await cmdStop(args);
       break;
     case "":
       error("no command specified");
