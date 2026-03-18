@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 export { launchTui } from "./app.tsx";
+export { launchDashboard } from "./dashboard.tsx";
 export { IssueDetailOverlay, showIssueDetail } from "./issue-detail-overlay.ts";
 export { NewIssueDialog, showNewIssueDialog } from "./new-issue-dialog.ts";
 export {

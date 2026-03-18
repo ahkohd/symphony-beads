@@ -19,8 +19,9 @@ hooks:
     rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
     echo "node_modules" >> .gitignore
     bun install 2>/dev/null || true
-    cat > AGENTS.md << 'AGENTS'
-    # Guidelines
+    cat >> AGENTS.md << 'AGENTS'
+
+    # Symphony Agent Guidelines
     - Work ONLY within this directory. Do not read or write files outside of it.
     - Do not cd to parent directories or access ../
     - All file paths must be relative to the current working directory.

@@ -28,6 +28,7 @@ const DEFAULTS: ServiceConfig = {
   runner: {
     command: "pi --no-session",
     model: null,
+    models: null,
     turn_timeout_ms: 3_600_000,
     stall_timeout_ms: 300_000,
   },
@@ -183,6 +184,49 @@ function parseYaml(yaml: string): Record<string, Record<string, unknown>> {
       // else: Top-level scalar — ignore (we only support sections)
       i++;
     } else if (section && result[section]) {
+      // Check for nested map (key with no value followed by indented children)
+      if (!raw || raw.startsWith("#")) {
+        const nestedMap: Record<string, unknown> = {};
+        const parentIndent = indent;
+        let hasChildren = false;
+        const savedI = i;
+        i++;
+
+        while (i < lines.length) {
+          const nLine = lines[i]!;
+          const nTrimmed = nLine.trim();
+
+          if (!nTrimmed || nTrimmed.startsWith("#")) {
+            i++;
+            continue;
+          }
+
+          const nIndent = nLine.length - nLine.trimStart().length;
+          if (nIndent <= parentIndent) break; // dedented — end of nested map
+
+          const nColon = nTrimmed.indexOf(":");
+          if (nColon < 0) {
+            i++;
+            continue;
+          }
+
+          const nKey = nTrimmed.slice(0, nColon).trim();
+          const nRaw = nTrimmed.slice(nColon + 1).trim();
+          nestedMap[nKey] = coerceValue(nRaw);
+          hasChildren = true;
+          i++;
+        }
+
+        if (hasChildren) {
+          result[section]![key] = nestedMap;
+        } else {
+          // No children found — treat as empty string value
+          result[section]![key] = "";
+          i = savedI + 1;
+        }
+        continue;
+      }
+
       // Check for YAML literal block scalar (pipe syntax)
       if (raw === "|" || raw === "|-" || raw === "|+") {
         const chopMode = raw === "|-" ? "strip" : raw === "|+" ? "keep" : "clip";

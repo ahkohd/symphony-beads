@@ -90,8 +90,12 @@ export class IssueDetailOverlay {
     this.onCloseCallback = callback;
   }
 
-  /** Show the detail overlay for the given issue ID. */
-  async show(issueId: string): Promise<void> {
+  /**
+   * Show the detail overlay for the given issue ID.
+   * @param issueId — The issue identifier to display.
+   * @param apiBase — Optional orchestrator API base URL for live session data.
+   */
+  async show(issueId: string, apiBase?: string): Promise<void> {
     // Close any existing overlay first
     this.close();
 
@@ -99,7 +103,7 @@ export class IssueDetailOverlay {
     const [issue, comments, session] = await Promise.all([
       fetchIssueDetail(issueId),
       fetchIssueComments(issueId),
-      fetchAgentSession(issueId),
+      fetchAgentSession(issueId, apiBase),
     ]);
 
     if (!issue) {

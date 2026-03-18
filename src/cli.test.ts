@@ -6,7 +6,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import { resolve, dirname, join } from "path";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "fs/promises";
 import { tmpdir } from "os";
-import { findProjectRoot } from "./cli.ts";
+import { findProjectRoot, parseArgs } from "./cli.ts";
 
 const CLI_PATH = resolve(import.meta.dir, "cli.ts");
 

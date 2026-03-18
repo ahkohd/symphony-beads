@@ -13,6 +13,8 @@ export interface Issue {
   state: string;
   labels: string[];
   blocked_by: BlockerRef[];
+  issue_type: string | null;
+  metadata: Record<string, string> | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -84,6 +86,7 @@ export interface AgentConfig {
 export interface RunnerConfig {
   command: string;
   model: string | null;
+  models: Record<string, string> | null;
   turn_timeout_ms: number;
   stall_timeout_ms: number;
 }

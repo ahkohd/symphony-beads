@@ -1,27 +1,40 @@
 // ---------------------------------------------------------------------------
-// TUI Dashboard — live agent status view using OpenTUI
+// TUI Dashboard — live agent status view using OpenTUI React
 //
 // Polls orchestrator state via HTTP API (GET /api/v1/state) every 2 seconds
 // and renders a terminal dashboard with running/retrying/review/completed info.
 //
-// Usage: symphony dashboard --port <port> [--host <host>]
+// Uses OrchestratorClient for auto-discovery of the API endpoint via
+// .symphony.lock or WORKFLOW.md config. Falls back to `bd list --json`.
+//
+// Layout (flexbox column):
+//   - Header: 'Symphony' + running/retrying/completed counts
+//   - Running section: Box per agent with issue ID, title, elapsed, last event
+//   - Retry section: issues waiting to retry with countdown
+//   - Review section: issues in review status (waiting on human)
+//   - Event log: ScrollBox with recent orchestrator events, newest first
+//   - Footer: keybindings help
+//
+// Color coding: green=running, yellow=retrying, blue=review, gray=completed.
 // ---------------------------------------------------------------------------
 
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard } from "@opentui/react";
-import { useState, useEffect, useCallback } from "react";
-import type { OrchestratorSnapshot } from "./orchestrator.ts";
+import { useState, useEffect, useCallback, useRef } from "react";
+import type { OrchestratorSnapshot } from "../orchestrator.ts";
+import { OrchestratorClient } from "./live-client.ts";
 
 // -- Types -------------------------------------------------------------------
 
 interface DashboardProps {
-  apiUrl: string;
+  client: OrchestratorClient;
   refreshMs?: number;
 }
 
 interface EventLogEntry {
   time: string;
   message: string;
+  color: string;
 }
 
 interface ReviewItem {
@@ -44,7 +57,8 @@ const COLORS = {
   text: "#e6edf3",
   textDim: "#8b949e",
   headerBg: "#1f2335",
-};
+  accent: "#7aa2f7",
+} as const;
 
 // -- Helpers -----------------------------------------------------------------
 
@@ -71,19 +85,11 @@ function pad(s: string, len: number): string {
   return s.length >= len ? s.slice(0, len) : s + " ".repeat(len - s.length);
 }
 
-// -- Data fetching -----------------------------------------------------------
-
-async function fetchSnapshot(
-  apiUrl: string,
-): Promise<OrchestratorSnapshot | null> {
-  try {
-    const res = await fetch(`${apiUrl}/api/v1/state`);
-    if (!res.ok) return null;
-    return (await res.json()) as OrchestratorSnapshot;
-  } catch {
-    return null;
-  }
+function timeStr(): string {
+  return new Date().toLocaleTimeString("en-US", { hour12: false });
 }
+
+// -- Data fetching -----------------------------------------------------------
 
 async function fetchReviewIssues(): Promise<ReviewItem[]> {
   try {
@@ -108,13 +114,24 @@ async function fetchReviewIssues(): Promise<ReviewItem[]> {
 
 // -- Components --------------------------------------------------------------
 
-function Header({ snap }: { snap: OrchestratorSnapshot | null }) {
+function Header({
+  snap,
+  source,
+}: {
+  snap: OrchestratorSnapshot | null;
+  source: "live" | "static" | "offline";
+}) {
   const counts = snap?.counts ?? {
     running: 0,
     retrying: 0,
     completed: 0,
     claimed: 0,
   };
+
+  const sourceLabel =
+    source === "live" ? "● live" : source === "static" ? "○ static" : "✗ offline";
+  const sourceColor =
+    source === "live" ? COLORS.green : source === "static" ? COLORS.yellow : COLORS.red;
 
   return (
     <box
@@ -128,8 +145,9 @@ function Header({ snap }: { snap: OrchestratorSnapshot | null }) {
       }}
     >
       <text>
-        <strong fg={COLORS.blue}>Symphony</strong>
-        <span fg={COLORS.textDim}> Dashboard</span>
+        <strong fg={COLORS.accent}>Symphony</strong>
+        <span fg={COLORS.textDim}> Dashboard </span>
+        <span fg={sourceColor}>{sourceLabel}</span>
       </text>
       <text>
         <span fg={COLORS.green}>● {counts.running} running</span>
@@ -177,7 +195,20 @@ function RunningSection({ snap }: { snap: OrchestratorSnapshot | null }) {
   return (
     <box style={{ flexDirection: "column" }}>
       {running.map((r) => (
-        <box key={r.issue_id} style={{ paddingLeft: 2, height: 1 }}>
+        <box
+          key={r.issue_id}
+          style={{
+            flexDirection: "row",
+            paddingLeft: 2,
+            height: 2,
+            borderStyle: "single",
+            border: true,
+            borderColor: COLORS.border,
+            backgroundColor: COLORS.surface,
+            marginLeft: 1,
+            marginRight: 1,
+          }}
+        >
           <text>
             <span fg={COLORS.green}>▶ </span>
             <span fg={COLORS.blue}>{pad(r.issue_identifier, 22)}</span>
@@ -254,7 +285,15 @@ function EventLog({ events }: { events: EventLogEntry[] }) {
   return (
     <scrollbox
       style={{
-        rootOptions: { flexGrow: 1, backgroundColor: COLORS.bg },
+        rootOptions: {
+          flexGrow: 1,
+          backgroundColor: COLORS.bg,
+          borderStyle: "single" as const,
+          border: true,
+          borderColor: COLORS.border,
+          marginLeft: 1,
+          marginRight: 1,
+        },
         wrapperOptions: { backgroundColor: COLORS.bg },
         viewportOptions: { backgroundColor: COLORS.bg },
         contentOptions: { backgroundColor: COLORS.bg },
@@ -268,15 +307,15 @@ function EventLog({ events }: { events: EventLogEntry[] }) {
       focused
     >
       {events.length === 0 ? (
-        <box style={{ paddingLeft: 2 }}>
+        <box style={{ paddingLeft: 1 }}>
           <text fg={COLORS.textDim}>Waiting for events...</text>
         </box>
       ) : (
         events.map((ev, i) => (
-          <box key={`${ev.time}-${i}`} style={{ paddingLeft: 2, height: 1 }}>
+          <box key={`${ev.time}-${i}`} style={{ paddingLeft: 1, height: 1 }}>
             <text>
               <span fg={COLORS.textDim}>{ev.time} </span>
-              <span fg={COLORS.text}>{ev.message}</span>
+              <span fg={ev.color}>{ev.message}</span>
             </text>
           </box>
         ))
@@ -312,51 +351,68 @@ function Footer() {
 
 // -- Main App ----------------------------------------------------------------
 
-function App({ apiUrl, refreshMs = 2000 }: DashboardProps) {
+function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
   const [snap, setSnap] = useState<OrchestratorSnapshot | null>(null);
   const [events, setEvents] = useState<EventLogEntry[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
-  const [connError, setConnError] = useState<string | null>(null);
+  const [source, setSource] = useState<"live" | "static" | "offline">("offline");
+
+  // Track which issue events we've already logged to avoid duplicates
+  const seenEventsRef = useRef(new Map<string, string>());
 
   const refresh = useCallback(async () => {
-    const [snapshot, reviewItems] = await Promise.all([
-      fetchSnapshot(apiUrl),
+    const [dashState, reviewItems] = await Promise.all([
+      client.fetchDashboard(),
       fetchReviewIssues(),
     ]);
 
-    if (snapshot) {
-      setSnap(snapshot);
-      setConnError(null);
-      setReviews(reviewItems);
+    setReviews(reviewItems);
 
-      // Build event log entries from current state
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString("en-US", { hour12: false });
+    if (dashState.source === "live") {
+      const snapshot = dashState.snapshot;
+      setSnap(snapshot);
+      setSource("live");
+
+      // Build event log entries from current state, dedup by issue+event
+      const now = timeStr();
       const newEvents: EventLogEntry[] = [];
+      const seen = seenEventsRef.current;
 
       for (const r of snapshot.running) {
         if (r.last_event) {
-          newEvents.push({
-            time: timeStr,
-            message: `[${r.issue_identifier}] ${r.last_event}: ${truncStr(r.last_message, 60)}`,
-          });
+          const key = `${r.issue_identifier}:${r.last_event}:${r.last_message}`;
+          if (!seen.has(r.issue_identifier) || seen.get(r.issue_identifier) !== key) {
+            seen.set(r.issue_identifier, key);
+            newEvents.push({
+              time: now,
+              message: `[${r.issue_identifier}] ${r.last_event}: ${truncStr(r.last_message, 60)}`,
+              color: COLORS.green,
+            });
+          }
         }
       }
 
       for (const r of snapshot.retrying) {
-        newEvents.push({
-          time: timeStr,
-          message: `[${r.identifier}] retry #${r.attempt}${r.error ? `: ${truncStr(r.error, 50)}` : ""}`,
-        });
+        const key = `retry:${r.identifier}:${r.attempt}`;
+        if (!seen.has(key)) {
+          seen.set(key, key);
+          newEvents.push({
+            time: now,
+            message: `[${r.identifier}] retry #${r.attempt}${r.error ? `: ${truncStr(r.error, 50)}` : ""}`,
+            color: COLORS.yellow,
+          });
+        }
       }
 
       if (newEvents.length > 0) {
         setEvents((prev) => [...newEvents, ...prev].slice(0, 200));
       }
     } else {
-      setConnError(`Cannot connect to ${apiUrl}`);
+      // Static fallback — no orchestrator running, show what we can
+      setSource("static");
+      setSnap(null);
     }
-  }, [apiUrl]);
+  }, [client]);
 
   // Initial fetch + polling
   useEffect(() => {
@@ -371,11 +427,13 @@ function App({ apiUrl, refreshMs = 2000 }: DashboardProps) {
       process.exit(0);
     }
     if (key.name === "r") {
-      refresh();
+      // Manual refresh — also try to trigger orchestrator poll
+      client.triggerRefresh().then(() => refresh());
     }
   });
 
-  if (connError && !snap) {
+  // Offline / no orchestrator state
+  if (source === "static" && !snap) {
     return (
       <box
         style={{
@@ -384,18 +442,24 @@ function App({ apiUrl, refreshMs = 2000 }: DashboardProps) {
           backgroundColor: COLORS.bg,
         }}
       >
-        <Header snap={null} />
+        <Header snap={null} source="static" />
         <box
           style={{
             flexGrow: 1,
             justifyContent: "center",
             alignItems: "center",
             flexDirection: "column",
+            gap: 1,
           }}
         >
-          <text fg={COLORS.red}>✗ {connError}</text>
+          <text fg={COLORS.yellow}>
+            ◌ No live orchestrator found
+          </text>
           <text fg={COLORS.textDim}>
-            Make sure symphony is running with --port flag
+            Start symphony with: symphony start --port 4500
+          </text>
+          <text fg={COLORS.textDim}>
+            The dashboard will auto-connect when available
           </text>
         </box>
         <Footer />
@@ -411,7 +475,7 @@ function App({ apiUrl, refreshMs = 2000 }: DashboardProps) {
         backgroundColor: COLORS.bg,
       }}
     >
-      <Header snap={snap} />
+      <Header snap={snap} source={source} />
 
       <SectionTitle
         title="Running"
@@ -448,16 +512,21 @@ function App({ apiUrl, refreshMs = 2000 }: DashboardProps) {
 
 // -- Entry point -------------------------------------------------------------
 
-export async function startDashboard(opts: {
-  port: number;
-  host?: string;
+export async function launchDashboard(opts?: {
+  projectDir?: string;
   refreshMs?: number;
 }): Promise<void> {
-  const host = opts.host ?? "127.0.0.1";
-  const apiUrl = `http://${host}:${opts.port}`;
+  const client = new OrchestratorClient(opts?.projectDir ?? process.cwd());
 
-  const renderer = await createCliRenderer({ exitOnCtrlC: true });
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: true,
+    useAlternateScreen: true,
+  });
+
   createRoot(renderer).render(
-    <App apiUrl={apiUrl} refreshMs={opts.refreshMs ?? 2000} />,
+    <DashboardApp
+      client={client}
+      refreshMs={opts?.refreshMs ?? 2000}
+    />,
   );
 }

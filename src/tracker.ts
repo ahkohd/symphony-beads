@@ -101,6 +101,8 @@ export class BeadsTracker {
       state: raw.status || "open",
       labels: (raw.labels ?? []).map((l) => l.toLowerCase()),
       blocked_by: this.extractBlockers(raw),
+      issue_type: raw.issue_type ?? null,
+      metadata: raw.metadata ?? null,
       created_at: raw.created_at ?? null,
       updated_at: raw.updated_at ?? null,
     };
@@ -129,6 +131,7 @@ interface BeadsRaw {
   issue_type?: string;
   labels?: string[];
   deps?: string[];
+  metadata?: Record<string, string>;
   created_at?: string;
   updated_at?: string;
 }
