@@ -1,44 +1,53 @@
 // ---------------------------------------------------------------------------
-// TUI Dashboard — live agent status view
+// TUI Kanban Board — issue management view using OpenTUI React
 //
-// Layout (flexbox column):
-//   - Header: 'Symphony' + running/retrying/completed counts
-//   - Running section: Box per agent with issue ID, title, elapsed, last event
-//   - Retry section: issues waiting to retry with countdown
-//   - Review section: issues in review status
-//   - Event log: ScrollBox with recent orchestrator events (newest first)
-//   - Footer: keybindings help
+// Four-column kanban layout (Open, In Progress, Review, Closed).
+// Arrow keys to navigate cards, Enter for details, m/M to move status,
+// n to create new issue, d to close/delete.
 //
-// Data source: OrchestratorClient (polls /api/v1/state or falls back to bd)
-// Auto-refresh: every 2 seconds
+// Data: bd list --all --json, refresh on action + periodic poll (5s).
 // ---------------------------------------------------------------------------
 
-import {
-  createCliRenderer,
-  Box,
-  Text,
-  ScrollBox,
-  type CliRenderer,
-  type KeyEvent,
-  type Renderable,
-} from "@opentui/core";
+import { createCliRenderer } from "@opentui/core";
+import { createRoot, useKeyboard } from "@opentui/react";
+import { useState, useEffect, useCallback } from "react";
+import { exec } from "../exec.ts";
+import { IssueDetailOverlay } from "./issue-detail-overlay.ts";
+import { NewIssueDialog } from "./new-issue-dialog.ts";
 
-import {
-  OrchestratorClient,
-  type DashboardState,
-  type LiveDashboardState,
-  type StaticDashboardState,
-  type StaticIssue,
-} from "./live-client.ts";
+// -- Types -------------------------------------------------------------------
 
-import type { OrchestratorSnapshot } from "../orchestrator.ts";
+interface Issue {
+  id: string;
+  title: string;
+  status: string;
+  priority: number | null;
+  issue_type: string;
+  owner: string | null;
+}
 
-// -- Colors ------------------------------------------------------------------
+/** Position of the selected card: column index + card index within column. */
+interface CursorPos {
+  col: number;
+  row: number;
+}
 
-const C = {
+// -- Constants ---------------------------------------------------------------
+
+const COLUMNS = [
+  { key: "open", label: "Open", color: "#9ece6a" },
+  { key: "in_progress", label: "In Progress", color: "#7dcfff" },
+  { key: "review", label: "Review", color: "#e0af68" },
+  { key: "closed", label: "Closed", color: "#565f89" },
+] as const;
+
+const STATUS_ORDER: string[] = COLUMNS.map((c) => c.key);
+
+const COLORS = {
   bg: "#1a1b26",
   surface: "#24283b",
   border: "#414868",
+  borderHighlight: "#7aa2f7",
   text: "#c0caf5",
   textDim: "#565f89",
   accent: "#7aa2f7",
@@ -47,694 +56,556 @@ const C = {
   red: "#f7768e",
   cyan: "#7dcfff",
   magenta: "#bb9af7",
-  gray: "#565f89",
-  blue: "#7aa2f7",
+  headerBg: "#1f2335",
 } as const;
 
-// -- VNode child type --------------------------------------------------------
-type VChild = ReturnType<typeof Box> | ReturnType<typeof Text> | null;
+const PRIORITY_BADGE: Record<number, { label: string; color: string }> = {
+  0: { label: "P0", color: COLORS.red },
+  1: { label: "P1", color: COLORS.yellow },
+  2: { label: "P2", color: COLORS.accent },
+  3: { label: "P3", color: COLORS.textDim },
+  4: { label: "P4", color: COLORS.textDim },
+};
 
-// -- Event log ---------------------------------------------------------------
+const POLL_INTERVAL_MS = 5000;
 
-interface EventLogEntry {
-  timestamp: string;
-  message: string;
-  color: string;
-}
+// -- Data fetching -----------------------------------------------------------
 
-// -- Dashboard ---------------------------------------------------------------
-
-/**
- * Launch the interactive TUI dashboard.
- * Blocks until the user presses 'q' or Ctrl+C.
- */
-export async function launchTui(): Promise<void> {
-  const renderer = await createCliRenderer({
-    exitOnCtrlC: false,
-    useAlternateScreen: true,
-    useMouse: false,
-  });
-
-  const dashboard = new Dashboard(renderer);
-  await dashboard.start();
-
-  return new Promise<void>((resolve) => {
-    dashboard.onExit(() => {
-      resolve();
+async function fetchAllIssues(): Promise<Issue[]> {
+  try {
+    const result = await exec(["bd", "list", "--all", "--json"], {
+      cwd: process.cwd(),
+      timeout: 10000,
     });
-  });
+    if (result.code !== 0 || !result.stdout.trim()) return [];
+    const parsed = JSON.parse(result.stdout);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((raw: Record<string, unknown>) => ({
+      id: (raw.id as string) ?? "",
+      title: (raw.title as string) ?? "(untitled)",
+      status: (raw.status as string) ?? "open",
+      priority: typeof raw.priority === "number" ? raw.priority : null,
+      issue_type: (raw.issue_type as string) ?? "task",
+      owner: (raw.owner as string) ?? null,
+    }));
+  } catch {
+    return [];
+  }
 }
 
-class Dashboard {
-  private renderer: CliRenderer;
-  private client: OrchestratorClient;
-  private refreshTimer: ReturnType<typeof setInterval> | null = null;
-  private keyHandler: ((key: KeyEvent) => void) | null = null;
-  private onExitCallback: (() => void) | null = null;
-  private lastState: DashboardState | null = null;
-  private eventLog: EventLogEntry[] = [];
-  private isLive = false;
-  private destroyed = false;
-
-  constructor(renderer: CliRenderer) {
-    this.renderer = renderer;
-    this.client = new OrchestratorClient(process.cwd());
-  }
-
-  onExit(callback: () => void): void {
-    this.onExitCallback = callback;
-  }
-
-  async start(): Promise<void> {
-    this.installKeyHandler();
-    await this.refresh();
-    this.refreshTimer = setInterval(() => this.refresh(), 2000);
-  }
-
-  private async refresh(): Promise<void> {
-    if (this.destroyed) return;
-
-    try {
-      const state = await this.client.fetchDashboard();
-      this.isLive = state.source === "live";
-
-      // Diff events for the log
-      if (state.source === "live") {
-        this.diffEvents(state);
-      }
-
-      this.lastState = state;
-      this.render();
-    } catch {
-      // On error, keep the last state and show an error indicator
-      this.render();
-    }
-  }
-
-  private diffEvents(newState: LiveDashboardState): void {
-    const snap = newState.snapshot;
-    const now = new Date().toLocaleTimeString();
-
-    if (!this.lastState || this.lastState.source !== "live") {
-      this.addEvent(now, "Connected to orchestrator", C.green);
-      return;
-    }
-
-    const oldSnap = (this.lastState as LiveDashboardState).snapshot;
-
-    // Check for newly running agents
-    for (const r of snap.running) {
-      const wasRunning = oldSnap.running.find(
-        (o) => o.issue_id === r.issue_id,
-      );
-      if (!wasRunning) {
-        this.addEvent(
-          now,
-          `▶ Started: ${r.issue_identifier} — ${truncate(r.title, 50)}`,
-          C.green,
-        );
-      }
-    }
-
-    // Check for agents that stopped running
-    for (const o of oldSnap.running) {
-      const stillRunning = snap.running.find(
-        (r) => r.issue_id === o.issue_id,
-      );
-      if (!stillRunning) {
-        const inRetry = snap.retrying.find(
-          (r) => r.issue_id === o.issue_id,
-        );
-        if (inRetry) {
-          this.addEvent(
-            now,
-            `⟳ Retrying: ${o.issue_identifier} — ${inRetry.error ?? "continuation"}`,
-            C.yellow,
-          );
-        } else {
-          this.addEvent(
-            now,
-            `✓ Completed: ${o.issue_identifier}`,
-            C.gray,
-          );
-        }
-      }
-    }
-
-    // Check for new retries
-    for (const r of snap.retrying) {
-      const wasRetrying = oldSnap.retrying.find(
-        (o) => o.issue_id === r.issue_id,
-      );
-      if (!wasRetrying) {
-        const wasRunning = oldSnap.running.find(
-          (o) => o.issue_id === r.issue_id,
-        );
-        if (!wasRunning) {
-          this.addEvent(
-            now,
-            `⟳ Scheduled retry: ${r.identifier} (attempt ${r.attempt})`,
-            C.yellow,
-          );
-        }
-      }
-    }
-  }
-
-  private addEvent(timestamp: string, message: string, color: string): void {
-    this.eventLog.unshift({ timestamp, message, color });
-    // Keep only the last 50 events
-    if (this.eventLog.length > 50) {
-      this.eventLog.length = 50;
-    }
-  }
-
-  private render(): void {
-    // Clear existing children from root
-    const existingDashboard = this.renderer.root.getRenderable("dashboard-root");
-    if (existingDashboard) {
-      this.renderer.root.remove("dashboard-root");
-    }
-
-    const state = this.lastState;
-    const children: VChild[] = [];
-
-    // -- Header --
-    children.push(this.buildHeader(state));
-
-    // -- Separator --
-    children.push(
-      Text({ content: "─".repeat(80), fg: C.border }),
+async function moveIssueStatus(
+  issueId: string,
+  newStatus: string,
+): Promise<boolean> {
+  try {
+    const result = await exec(
+      ["bd", "update", issueId, "--status", newStatus],
+      { cwd: process.cwd(), timeout: 10000 },
     );
-
-    if (state?.source === "live") {
-      const snap = state.snapshot;
-
-      // -- Running section --
-      children.push(this.buildRunningSection(snap));
-
-      // -- Retry section --
-      if (snap.retrying.length > 0) {
-        children.push(this.buildRetrySection(snap));
-      }
-    } else if (state?.source === "static") {
-      // -- Static: show issues by status --
-      const reviewIssues = state.issues.filter(
-        (i) => i.status === "review",
-      );
-      const activeIssues = state.issues.filter(
-        (i) => i.status === "open" || i.status === "in_progress" || i.status === "todo",
-      );
-      const completedIssues = state.issues.filter(
-        (i) => i.status === "done" || i.status === "closed",
-      );
-
-      if (activeIssues.length > 0) {
-        children.push(this.buildStaticSection("Active Issues", activeIssues, C.green));
-      }
-      if (reviewIssues.length > 0) {
-        children.push(this.buildStaticSection("In Review", reviewIssues, C.blue));
-      }
-      if (completedIssues.length > 0) {
-        children.push(this.buildStaticSection("Completed", completedIssues, C.gray));
-      }
-
-      if (state.issues.length === 0) {
-        children.push(
-          Box(
-            { flexDirection: "column", paddingLeft: 1, paddingY: 1 },
-            Text({ content: "No issues found.", fg: C.textDim }),
-          ),
-        );
-      }
-    } else {
-      // No data yet
-      children.push(
-        Box(
-          { flexDirection: "column", paddingLeft: 1, paddingY: 1 },
-          Text({ content: "Loading...", fg: C.textDim }),
-        ),
-      );
-    }
-
-    // -- Review section (live mode) --
-    if (state?.source === "live") {
-      // We can detect review from running entries whose state is "review"
-      const reviewEntries = state.snapshot.running.filter(
-        (r) => r.state === "review",
-      );
-      if (reviewEntries.length > 0) {
-        children.push(this.buildReviewSection(reviewEntries));
-      }
-    }
-
-    // -- Event Log section --
-    children.push(this.buildEventLog());
-
-    // -- Footer --
-    children.push(this.buildFooter());
-
-    // Filter out nulls
-    const validChildren = children.filter(
-      (c): c is NonNullable<VChild> => c != null,
-    );
-
-    const dashboard = Box(
-      {
-        id: "dashboard-root",
-        width: "100%",
-        height: "100%",
-        backgroundColor: C.bg,
-        flexDirection: "column",
-      },
-      ...validChildren,
-    );
-
-    this.renderer.root.add(dashboard);
+    return result.code === 0;
+  } catch {
+    return false;
   }
+}
 
-  // -- Section builders ------------------------------------------------------
+async function closeIssue(issueId: string): Promise<boolean> {
+  try {
+    const result = await exec(
+      ["bd", "close", issueId, "--reason", "Closed from TUI"],
+      { cwd: process.cwd(), timeout: 10000 },
+    );
+    return result.code === 0;
+  } catch {
+    return false;
+  }
+}
 
-  private buildHeader(state: DashboardState | null): VChild {
-    let counts = { running: 0, retrying: 0, completed: 0 };
-    if (state?.source === "live") {
-      counts = {
-        running: state.snapshot.counts.running,
-        retrying: state.snapshot.counts.retrying,
-        completed: state.snapshot.counts.completed,
-      };
-    } else if (state?.source === "static") {
-      counts = {
-        running: state.issues.filter((i) => i.status === "in_progress").length,
-        retrying: 0,
-        completed: state.issues.filter(
-          (i) => i.status === "done" || i.status === "closed",
-        ).length,
-      };
-    }
+// -- Helpers -----------------------------------------------------------------
 
-    const sourceIndicator = this.isLive
-      ? "● LIVE"
-      : "○ STATIC";
-    const sourceColor = this.isLive ? C.green : C.yellow;
+function truncStr(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
 
-    return Box(
-      {
+function bucketIssues(issues: Issue[]): Map<string, Issue[]> {
+  const buckets = new Map<string, Issue[]>();
+  for (const col of COLUMNS) {
+    buckets.set(col.key, []);
+  }
+  for (const issue of issues) {
+    const key = STATUS_ORDER.includes(issue.status) ? issue.status : "open";
+    buckets.get(key)!.push(issue);
+  }
+  return buckets;
+}
+
+function clampCursor(
+  cursor: CursorPos,
+  buckets: Map<string, Issue[]>,
+): CursorPos {
+  const col = Math.max(0, Math.min(cursor.col, COLUMNS.length - 1));
+  const colKey = COLUMNS[col]!.key;
+  const items = buckets.get(colKey) ?? [];
+  const row =
+    items.length > 0
+      ? Math.max(0, Math.min(cursor.row, items.length - 1))
+      : 0;
+  return { col, row };
+}
+
+// -- Components --------------------------------------------------------------
+
+function Header({
+  issueCount,
+  status,
+}: {
+  issueCount: number;
+  status: string;
+}) {
+  return (
+    <box
+      style={{
         flexDirection: "row",
-        paddingX: 1,
-        paddingY: 1,
-        gap: 2,
-      },
-      Text({ content: "♦ Symphony", fg: C.accent, attributes: 1 }),
-      Text({ content: sourceIndicator, fg: sourceColor }),
-      Text({
-        content: `Running: ${counts.running}`,
-        fg: C.green,
-      }),
-      Text({
-        content: `Retrying: ${counts.retrying}`,
-        fg: C.yellow,
-      }),
-      Text({
-        content: `Completed: ${counts.completed}`,
-        fg: C.gray,
-      }),
-    );
-  }
+        justifyContent: "space-between",
+        paddingLeft: 1,
+        paddingRight: 1,
+        height: 1,
+        backgroundColor: COLORS.headerBg,
+      }}
+    >
+      <text>
+        <strong fg={COLORS.accent}>Symphony</strong>
+        <span fg={COLORS.textDim}> Kanban</span>
+        <span fg={COLORS.textDim}> — {issueCount} issues</span>
+      </text>
+      <text fg={COLORS.textDim}>{status}</text>
+    </box>
+  );
+}
 
-  private buildRunningSection(snap: OrchestratorSnapshot): VChild {
-    const sectionChildren: VChild[] = [
-      Text({
-        content: " ▸ Running Agents",
-        fg: C.green,
-        attributes: 1,
-      }),
-    ];
+function PriorityBadge({ priority }: { priority: number | null }) {
+  if (priority === null) return <span fg={COLORS.textDim}>--</span>;
+  const badge = PRIORITY_BADGE[priority] ?? {
+    label: `P${priority}`,
+    color: COLORS.textDim,
+  };
+  return <span fg={badge.color}>{badge.label}</span>;
+}
 
-    if (snap.running.length === 0) {
-      sectionChildren.push(
-        Box(
-          { paddingLeft: 3 },
-          Text({ content: "No agents running", fg: C.textDim }),
-        ),
-      );
-    } else {
-      for (const agent of snap.running) {
-        sectionChildren.push(this.buildAgentBox(agent));
-      }
-    }
+function IssueCard({
+  issue,
+  isSelected,
+  maxWidth,
+}: {
+  issue: Issue;
+  isSelected: boolean;
+  maxWidth: number;
+}) {
+  const borderColor = isSelected ? COLORS.borderHighlight : COLORS.border;
+  const bgColor = isSelected ? COLORS.surface : COLORS.bg;
+  const titleMaxLen = Math.max(8, maxWidth - 6);
+  const assignee = issue.owner
+    ? truncStr(issue.owner.replace(/^agent@/, "@"), 16)
+    : "";
 
-    return Box(
-      {
-        flexDirection: "column",
-        gap: 0,
-        paddingY: 0,
-      },
-      ...sectionChildren.filter((c): c is NonNullable<VChild> => c != null),
-    );
-  }
-
-  private buildAgentBox(
-    agent: OrchestratorSnapshot["running"][number],
-  ): VChild {
-    const elapsed = formatDuration(agent.elapsed_ms);
-    const tokens = `${fmtNum(agent.tokens.input)}↑ ${fmtNum(agent.tokens.output)}↓`;
-    const lastEvent = agent.last_event ?? "—";
-    const message = truncate(agent.last_message, 60);
-
-    return Box(
-      {
+  return (
+    <box
+      style={{
         flexDirection: "column",
         borderStyle: "rounded",
         border: true,
-        borderColor: C.green,
-        backgroundColor: C.surface,
-        paddingX: 1,
-        paddingY: 0,
-        marginLeft: 2,
-        marginRight: 2,
-        marginTop: 0,
-        marginBottom: 0,
-      },
-      // Row 1: ID, title, elapsed
-      Box(
-        { flexDirection: "row", gap: 2 },
-        Text({ content: agent.issue_identifier, fg: C.accent, attributes: 1 }),
-        Text({ content: truncate(agent.title, 40), fg: C.text, truncate: true }),
-        Text({ content: elapsed, fg: C.cyan }),
-        Text({ content: `#${agent.attempt}`, fg: C.textDim }),
-      ),
-      // Row 2: last event, message, tokens
-      Box(
-        { flexDirection: "row", gap: 2 },
-        Text({ content: `Event: ${lastEvent}`, fg: C.yellow }),
-        Text({ content: message, fg: C.textDim, truncate: true }),
-        Text({ content: tokens, fg: C.textDim }),
-      ),
-    );
-  }
+        borderColor,
+        backgroundColor: bgColor,
+        paddingLeft: 1,
+        paddingRight: 1,
+        width: "100%",
+        height: 4,
+      }}
+    >
+      <box
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          height: 1,
+        }}
+      >
+        <text>
+          <span fg={COLORS.cyan}>{issue.id}</span>
+        </text>
+        <text>
+          <PriorityBadge priority={issue.priority} />
+        </text>
+      </box>
+      <text fg={COLORS.text}>{truncStr(issue.title, titleMaxLen)}</text>
+      {assignee ? (
+        <text fg={COLORS.textDim}>{assignee}</text>
+      ) : (
+        <text fg={COLORS.textDim}>—</text>
+      )}
+    </box>
+  );
+}
 
-  private buildRetrySection(snap: OrchestratorSnapshot): VChild {
-    const sectionChildren: VChild[] = [
-      Text({
-        content: " ⟳ Retrying",
-        fg: C.yellow,
-        attributes: 1,
-      }),
-    ];
+function KanbanColumn({
+  label,
+  color,
+  issues,
+  selectedRow,
+  isActiveColumn,
+}: {
+  label: string;
+  color: string;
+  issues: Issue[];
+  selectedRow: number;
+  isActiveColumn: boolean;
+}) {
+  const headerBorderColor = isActiveColumn ? color : COLORS.border;
 
-    const now = Date.now();
-
-    for (const retry of snap.retrying) {
-      const dueAt = new Date(retry.due_at).getTime();
-      const remainingMs = Math.max(0, dueAt - now);
-      const countdown = formatDuration(remainingMs);
-      const errorMsg = retry.error
-        ? truncate(retry.error, 50)
-        : "continuation";
-
-      sectionChildren.push(
-        Box(
-          {
-            flexDirection: "row",
-            gap: 2,
-            paddingLeft: 3,
-          },
-          Text({ content: "⏳", fg: C.yellow }),
-          Text({ content: retry.identifier, fg: C.accent }),
-          Text({ content: `in ${countdown}`, fg: C.yellow }),
-          Text({ content: `attempt ${retry.attempt}`, fg: C.textDim }),
-          Text({ content: errorMsg, fg: C.textDim, truncate: true }),
-        ),
-      );
-    }
-
-    return Box(
-      {
-        flexDirection: "column",
-        gap: 0,
-        paddingY: 0,
-      },
-      ...sectionChildren.filter((c): c is NonNullable<VChild> => c != null),
-    );
-  }
-
-  private buildReviewSection(
-    entries: OrchestratorSnapshot["running"],
-  ): VChild {
-    const sectionChildren: VChild[] = [
-      Text({
-        content: " ◉ In Review",
-        fg: C.blue,
-        attributes: 1,
-      }),
-    ];
-
-    for (const entry of entries) {
-      sectionChildren.push(
-        Box(
-          {
-            flexDirection: "row",
-            gap: 2,
-            paddingLeft: 3,
-          },
-          Text({ content: "⦿", fg: C.blue }),
-          Text({ content: entry.issue_identifier, fg: C.accent }),
-          Text({
-            content: truncate(entry.title, 50),
-            fg: C.text,
-            truncate: true,
-          }),
-          Text({
-            content: "waiting on human",
-            fg: C.textDim,
-          }),
-        ),
-      );
-    }
-
-    return Box(
-      {
-        flexDirection: "column",
-        gap: 0,
-        paddingY: 0,
-      },
-      ...sectionChildren.filter((c): c is NonNullable<VChild> => c != null),
-    );
-  }
-
-  private buildStaticSection(
-    title: string,
-    issues: StaticIssue[],
-    color: string,
-  ): VChild {
-    const sectionChildren: VChild[] = [
-      Text({
-        content: ` ▸ ${title} (${issues.length})`,
-        fg: color,
-        attributes: 1,
-      }),
-    ];
-
-    for (const issue of issues) {
-      const priority =
-        issue.priority !== null ? `P${issue.priority}` : "P—";
-
-      sectionChildren.push(
-        Box(
-          {
-            flexDirection: "row",
-            gap: 2,
-            paddingLeft: 3,
-          },
-          Text({ content: "●", fg: color }),
-          Text({ content: issue.identifier || issue.id, fg: C.accent }),
-          Text({ content: priority, fg: C.textDim }),
-          Text({
-            content: truncate(issue.title, 50),
-            fg: C.text,
-            truncate: true,
-          }),
-          Text({
-            content: issue.status,
-            fg: color,
-          }),
-        ),
-      );
-    }
-
-    return Box(
-      {
-        flexDirection: "column",
-        gap: 0,
-        paddingY: 0,
-      },
-      ...sectionChildren.filter((c): c is NonNullable<VChild> => c != null),
-    );
-  }
-
-  private buildEventLog(): VChild {
-    const logChildren: VChild[] = [
-      Text({
-        content: " ▾ Event Log",
-        fg: C.accent,
-        attributes: 1,
-      }),
-    ];
-
-    if (this.eventLog.length === 0) {
-      logChildren.push(
-        Box(
-          { paddingLeft: 3 },
-          Text({
-            content: this.isLive
-              ? "No events yet — watching for changes..."
-              : "Connect to a running orchestrator to see events",
-            fg: C.textDim,
-          }),
-        ),
-      );
-    } else {
-      for (const entry of this.eventLog.slice(0, 15)) {
-        logChildren.push(
-          Box(
-            {
-              flexDirection: "row",
-              gap: 1,
-              paddingLeft: 3,
-            },
-            Text({ content: entry.timestamp, fg: C.textDim }),
-            Text({ content: entry.message, fg: entry.color, truncate: true }),
-          ),
-        );
-      }
-    }
-
-    return ScrollBox(
-      {
+  return (
+    <box
+      style={{
         flexDirection: "column",
         flexGrow: 1,
-        paddingY: 0,
-        stickyStart: "top",
-        contentOptions: {
-          flexDirection: "column",
-          gap: 0,
-        },
-      },
-      ...logChildren.filter((c): c is NonNullable<VChild> => c != null),
-    );
-  }
-
-  private buildFooter(): VChild {
-    return Box(
-      {
-        flexDirection: "row",
-        paddingX: 1,
-        paddingY: 0,
+        flexBasis: 0,
         borderStyle: "single",
-        border: ["top"] as any,
-        borderColor: C.border,
-        gap: 3,
-      },
-      Text({ content: "q Quit", fg: C.textDim }),
-      Text({ content: "r Refresh", fg: C.textDim }),
-      Text({ content: "R Force refresh (API)", fg: C.textDim }),
-    );
-  }
+        border: true,
+        borderColor: headerBorderColor,
+        backgroundColor: COLORS.bg,
+      }}
+    >
+      {/* Column header */}
+      <box
+        style={{
+          height: 1,
+          paddingLeft: 1,
+          backgroundColor: isActiveColumn ? COLORS.surface : COLORS.bg,
+        }}
+      >
+        <text>
+          <span fg={color}>
+            <strong>{label}</strong>
+          </span>
+          <span fg={COLORS.textDim}> ({issues.length})</span>
+        </text>
+      </box>
 
-  // -- Key handling ----------------------------------------------------------
+      {/* Cards */}
+      <scrollbox
+        style={{
+          rootOptions: { flexGrow: 1, backgroundColor: COLORS.bg },
+          contentOptions: {
+            flexDirection: "column",
+            gap: 0,
+            backgroundColor: COLORS.bg,
+          },
+        }}
+      >
+        {issues.length === 0 ? (
+          <box style={{ paddingLeft: 1, height: 1 }}>
+            <text fg={COLORS.textDim}>empty</text>
+          </box>
+        ) : (
+          issues.map((issue, idx) => (
+            <IssueCard
+              key={issue.id}
+              issue={issue}
+              isSelected={isActiveColumn && idx === selectedRow}
+              maxWidth={30}
+            />
+          ))
+        )}
+      </scrollbox>
+    </box>
+  );
+}
 
-  private installKeyHandler(): void {
-    this.keyHandler = (key: KeyEvent) => {
-      // Quit
-      if (key.name === "q" || (key.ctrl && key.name === "c")) {
-        key.preventDefault();
-        this.destroy();
-        return;
-      }
+function Footer({ statusMsg }: { statusMsg: string }) {
+  return (
+    <box
+      style={{
+        flexDirection: "row",
+        justifyContent: "space-between",
+        paddingLeft: 1,
+        paddingRight: 1,
+        height: 1,
+        backgroundColor: COLORS.headerBg,
+      }}
+    >
+      <text>
+        <span fg={COLORS.textDim}>←→</span>
+        <span fg={COLORS.text}> col </span>
+        <span fg={COLORS.textDim}>↑↓</span>
+        <span fg={COLORS.text}> card </span>
+        <span fg={COLORS.textDim}>Enter</span>
+        <span fg={COLORS.text}> detail </span>
+        <span fg={COLORS.textDim}>m/M</span>
+        <span fg={COLORS.text}> move </span>
+        <span fg={COLORS.textDim}>n</span>
+        <span fg={COLORS.text}> new </span>
+        <span fg={COLORS.textDim}>d</span>
+        <span fg={COLORS.text}> close </span>
+        <span fg={COLORS.textDim}>r</span>
+        <span fg={COLORS.text}> refresh </span>
+        <span fg={COLORS.textDim}>q</span>
+        <span fg={COLORS.text}> quit</span>
+      </text>
+      {statusMsg ? <text fg={COLORS.yellow}>{statusMsg}</text> : null}
+    </box>
+  );
+}
 
-      // Manual refresh
-      if (key.name === "r" && !key.shift) {
-        key.preventDefault();
-        this.refresh();
-        return;
-      }
+// -- Main App ----------------------------------------------------------------
 
-      // Force refresh via API POST
-      if (key.name === "r" && key.shift) {
-        key.preventDefault();
-        this.forceRefresh();
-        return;
-      }
-    };
-    this.renderer.keyInput.on("keypress", this.keyHandler);
-  }
+function KanbanApp({
+  renderer,
+}: {
+  renderer: Awaited<ReturnType<typeof createCliRenderer>>;
+}) {
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [cursor, setCursor] = useState<CursorPos>({ col: 0, row: 0 });
+  const [statusMsg, setStatusMsg] = useState("loading…");
+  const [overlayActive, setOverlayActive] = useState(false);
 
-  private async forceRefresh(): Promise<void> {
-    this.addEvent(
-      new Date().toLocaleTimeString(),
-      "⟳ Triggering forced refresh...",
-      C.cyan,
-    );
+  const buckets = bucketIssues(issues);
 
-    const snap = await this.client.triggerRefresh();
-    if (snap) {
-      this.lastState = { source: "live", snapshot: snap };
-      this.isLive = true;
-      this.addEvent(
-        new Date().toLocaleTimeString(),
-        "✓ Forced refresh complete",
-        C.green,
-      );
+  // -- Data refresh ----------------------------------------------------------
+
+  const refresh = useCallback(async () => {
+    const fetched = await fetchAllIssues();
+    setIssues(fetched);
+    setStatusMsg("");
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const interval = setInterval(refresh, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [refresh]);
+
+  // Clamp cursor when issues change
+  useEffect(() => {
+    setCursor((prev) => clampCursor(prev, buckets));
+  }, [issues]);
+
+  // -- Helpers ---------------------------------------------------------------
+
+  const getSelectedIssue = useCallback((): Issue | null => {
+    const colKey = COLUMNS[cursor.col]?.key;
+    if (!colKey) return null;
+    const items = buckets.get(colKey) ?? [];
+    return items[cursor.row] ?? null;
+  }, [cursor, buckets]);
+
+  // -- Actions ---------------------------------------------------------------
+
+  const handleMoveForward = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    const currentIdx = STATUS_ORDER.indexOf(issue.status);
+    if (currentIdx < 0 || currentIdx >= STATUS_ORDER.length - 1) {
+      setStatusMsg("already at last status");
+      return;
+    }
+    const nextStatus = STATUS_ORDER[currentIdx + 1]!;
+    setStatusMsg(`moving ${issue.id} → ${nextStatus}…`);
+    const ok = await moveIssueStatus(issue.id, nextStatus);
+    if (ok) {
+      setStatusMsg(`moved ${issue.id} → ${nextStatus}`);
+      await refresh();
     } else {
-      this.addEvent(
-        new Date().toLocaleTimeString(),
-        "✗ Forced refresh failed — API unreachable",
-        C.red,
-      );
+      setStatusMsg(`failed to move ${issue.id}`);
     }
-    this.render();
-  }
+  }, [getSelectedIssue, refresh]);
 
-  private destroy(): void {
-    if (this.destroyed) return;
-    this.destroyed = true;
-
-    if (this.refreshTimer) {
-      clearInterval(this.refreshTimer);
-      this.refreshTimer = null;
+  const handleMoveBackward = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    const currentIdx = STATUS_ORDER.indexOf(issue.status);
+    if (currentIdx <= 0) {
+      setStatusMsg("already at first status");
+      return;
     }
-
-    if (this.keyHandler) {
-      this.renderer.keyInput.off("keypress", this.keyHandler);
-      this.keyHandler = null;
+    const prevStatus = STATUS_ORDER[currentIdx - 1]!;
+    setStatusMsg(`moving ${issue.id} → ${prevStatus}…`);
+    const ok = await moveIssueStatus(issue.id, prevStatus);
+    if (ok) {
+      setStatusMsg(`moved ${issue.id} → ${prevStatus}`);
+      await refresh();
+    } else {
+      setStatusMsg(`failed to move ${issue.id}`);
     }
+  }, [getSelectedIssue, refresh]);
 
-    this.renderer.destroy();
-
-    if (this.onExitCallback) {
-      this.onExitCallback();
+  const handleClose = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    setStatusMsg(`closing ${issue.id}…`);
+    const ok = await closeIssue(issue.id);
+    if (ok) {
+      setStatusMsg(`closed ${issue.id}`);
+      await refresh();
+    } else {
+      setStatusMsg(`failed to close ${issue.id}`);
     }
-  }
+  }, [getSelectedIssue, refresh]);
+
+  const handleShowDetail = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    setOverlayActive(true);
+    const overlay = new IssueDetailOverlay(renderer);
+    overlay.onClose(() => {
+      setOverlayActive(false);
+    });
+    await overlay.show(issue.id);
+  }, [getSelectedIssue, renderer]);
+
+  const handleNewIssue = useCallback(() => {
+    setOverlayActive(true);
+    const dialog = new NewIssueDialog(renderer);
+    dialog.onClose(() => {
+      setOverlayActive(false);
+    });
+    dialog.onCreated(() => {
+      refresh();
+    });
+    dialog.show();
+  }, [renderer, refresh]);
+
+  // -- Keyboard --------------------------------------------------------------
+
+  useKeyboard((key) => {
+    // Don't handle keys when an overlay is active
+    if (overlayActive) return;
+
+    switch (key.name) {
+      case "q":
+      case "escape":
+        process.exit(0);
+        break;
+
+      case "r":
+        refresh();
+        setStatusMsg("refreshing…");
+        break;
+
+      case "left":
+        setCursor((prev) => {
+          const newCol = Math.max(0, prev.col - 1);
+          const colKey = COLUMNS[newCol]!.key;
+          const items = buckets.get(colKey) ?? [];
+          const row =
+            items.length > 0
+              ? Math.min(prev.row, items.length - 1)
+              : 0;
+          return { col: newCol, row };
+        });
+        break;
+
+      case "right":
+        setCursor((prev) => {
+          const newCol = Math.min(COLUMNS.length - 1, prev.col + 1);
+          const colKey = COLUMNS[newCol]!.key;
+          const items = buckets.get(colKey) ?? [];
+          const row =
+            items.length > 0
+              ? Math.min(prev.row, items.length - 1)
+              : 0;
+          return { col: newCol, row };
+        });
+        break;
+
+      case "up":
+        setCursor((prev) => ({
+          ...prev,
+          row: Math.max(0, prev.row - 1),
+        }));
+        break;
+
+      case "down":
+        setCursor((prev) => {
+          const colKey = COLUMNS[prev.col]!.key;
+          const items = buckets.get(colKey) ?? [];
+          return {
+            ...prev,
+            row: Math.min(items.length - 1, prev.row + 1),
+          };
+        });
+        break;
+
+      case "return":
+      case "enter":
+        handleShowDetail();
+        break;
+
+      case "m":
+        if (key.shift) {
+          handleMoveBackward();
+        } else {
+          handleMoveForward();
+        }
+        break;
+
+      case "M":
+        handleMoveBackward();
+        break;
+
+      case "n":
+        handleNewIssue();
+        break;
+
+      case "d":
+        handleClose();
+        break;
+    }
+  });
+
+  // -- Render ----------------------------------------------------------------
+
+  return (
+    <box
+      style={{
+        flexDirection: "column",
+        flexGrow: 1,
+        backgroundColor: COLORS.bg,
+      }}
+    >
+      <Header issueCount={issues.length} status={statusMsg} />
+
+      {/* Kanban columns */}
+      <box
+        style={{
+          flexDirection: "row",
+          flexGrow: 1,
+          gap: 0,
+        }}
+      >
+        {COLUMNS.map((col, colIdx) => {
+          const items = buckets.get(col.key) ?? [];
+          return (
+            <KanbanColumn
+              key={col.key}
+              label={col.label}
+              color={col.color}
+              issues={items}
+              selectedRow={cursor.row}
+              isActiveColumn={cursor.col === colIdx}
+            />
+          );
+        })}
+      </box>
+
+      <Footer statusMsg={statusMsg} />
+    </box>
+  );
 }
 
-// -- Utility functions -------------------------------------------------------
+// -- Entry point -------------------------------------------------------------
 
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
-}
+export async function launchTui(): Promise<void> {
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: true,
+    useAlternateScreen: true,
+  });
 
-function fmtNum(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
-  return String(n);
-}
-
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) + "…" : s;
+  createRoot(renderer).render(<KanbanApp renderer={renderer} />);
 }
