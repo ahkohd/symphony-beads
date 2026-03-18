@@ -386,45 +386,63 @@ export class NewIssueDialog {
 
   private deepFind(node: Renderable, id: string): Renderable | null {
     if (node.id === id) return node;
+
     // Check children
-    const children = (node as Record<string, unknown>).children as Renderable[] | undefined;
-    if (children && Array.isArray(children)) {
+    const children = (node as unknown as { children?: unknown }).children;
+    if (Array.isArray(children)) {
       for (const child of children) {
-        const found = this.deepFind(child, id);
+        if (!child || typeof child !== "object") continue;
+        const found = this.deepFind(child as Renderable, id);
         if (found) return found;
       }
     }
+
     // Also try getRenderable
-    const found = node.getRenderable?.(id) ?? null;
-    if (found) return found;
-    return null;
+    return node.getRenderable?.(id) ?? null;
+  }
+
+  private getRenderableValue(node: Renderable | null): string | null {
+    if (!node) return null;
+    const value = (node as unknown as { value?: unknown }).value;
+    return typeof value === "string" ? value : null;
+  }
+
+  private getSelectedIndex(node: Renderable | null): number | null {
+    if (!node) return null;
+    const getIndex = (node as unknown as { getSelectedIndex?: unknown }).getSelectedIndex;
+    if (typeof getIndex !== "function") return null;
+    const value = getIndex.call(node);
+    return typeof value === "number" ? value : null;
   }
 
   private setupInputListeners(): void {
     // Listen for input changes on the title field
     if (this.titleInput) {
       this.titleInput.on("input", () => {
-        this.titleValue = (this.titleInput as Record<string, unknown>)?.value ?? "";
+        this.titleValue = this.getRenderableValue(this.titleInput) ?? "";
       });
       this.titleInput.on("change", () => {
-        this.titleValue = (this.titleInput as Record<string, unknown>)?.value ?? "";
+        this.titleValue = this.getRenderableValue(this.titleInput) ?? "";
       });
     }
+
     // Listen for input changes on the description field
     if (this.descriptionInput) {
       this.descriptionInput.on("input", () => {
-        this.descriptionValue = (this.descriptionInput as Record<string, unknown>)?.value ?? "";
+        this.descriptionValue = this.getRenderableValue(this.descriptionInput) ?? "";
       });
       this.descriptionInput.on("change", () => {
-        this.descriptionValue = (this.descriptionInput as Record<string, unknown>)?.value ?? "";
+        this.descriptionValue = this.getRenderableValue(this.descriptionInput) ?? "";
       });
     }
+
     // Listen for selection changes on priority
     if (this.prioritySelect) {
       this.prioritySelect.on("selectionChanged", (index: number) => {
         this.priorityIndex = index;
       });
     }
+
     // Listen for selection changes on type
     if (this.typeSelect) {
       this.typeSelect.on("selectionChanged", (index: number) => {
@@ -464,21 +482,24 @@ export class NewIssueDialog {
   }
 
   private captureValues(): void {
-    if (this.titleInput) {
-      this.titleValue = (this.titleInput as Record<string, unknown>)?.value ?? this.titleValue;
+    const titleValue = this.getRenderableValue(this.titleInput);
+    if (titleValue !== null) {
+      this.titleValue = titleValue;
     }
-    if (this.descriptionInput) {
-      this.descriptionValue =
-        (this.descriptionInput as Record<string, unknown>)?.value ?? this.descriptionValue;
+
+    const descriptionValue = this.getRenderableValue(this.descriptionInput);
+    if (descriptionValue !== null) {
+      this.descriptionValue = descriptionValue;
     }
-    if (this.prioritySelect) {
-      this.priorityIndex =
-        (this.prioritySelect as Record<string, unknown>)?.getSelectedIndex?.() ??
-        this.priorityIndex;
+
+    const priorityIndex = this.getSelectedIndex(this.prioritySelect);
+    if (priorityIndex !== null) {
+      this.priorityIndex = priorityIndex;
     }
-    if (this.typeSelect) {
-      this.typeIndex =
-        (this.typeSelect as Record<string, unknown>)?.getSelectedIndex?.() ?? this.typeIndex;
+
+    const typeIndex = this.getSelectedIndex(this.typeSelect);
+    if (typeIndex !== null) {
+      this.typeIndex = typeIndex;
     }
   }
 

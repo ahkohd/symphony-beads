@@ -491,7 +491,11 @@ describe("resolveConfigPaths", () => {
         terminal_states: ["closed"],
       },
       polling: { interval_ms: 30000 },
-      workspace: { root: overrides?.workspace_root ?? "./workspaces" },
+      workspace: {
+        root: overrides?.workspace_root ?? "./workspaces",
+        repo: null,
+        remote: "origin",
+      },
       hooks: {
         after_create: null,
         before_run: null,
@@ -499,7 +503,12 @@ describe("resolveConfigPaths", () => {
         before_remove: null,
         timeout_ms: 60000,
       },
-      agent: { max_concurrent: 1, max_turns: 10, max_retry_backoff_ms: 300000 },
+      agent: {
+        max_concurrent: 1,
+        max_concurrent_by_state: null,
+        max_turns: 10,
+        max_retry_backoff_ms: 300000,
+      },
       runner: {
         command: "echo noop",
         model: null,
