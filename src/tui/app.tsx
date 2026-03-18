@@ -664,7 +664,8 @@ function KanbanApp({
     overlayRef.current = true; setOverlayActive(true);
     const overlay = new IssueDetailOverlay(renderer);
     overlay.onClose(() => {
-      overlayRef.current = false; setOverlayActive(false);
+      // Delay ref reset so the same Esc keypress doesn't also exit the app
+      setTimeout(() => { overlayRef.current = false; setOverlayActive(false); }, 50);
     });
     // Pass the discovered API base so the overlay can fetch agent session data
     const apiBase = client.getApiBase() ?? undefined;
@@ -675,7 +676,7 @@ function KanbanApp({
     overlayRef.current = true; setOverlayActive(true);
     const dialog = new NewIssueDialog(renderer);
     dialog.onClose(() => {
-      overlayRef.current = false; setOverlayActive(false);
+      setTimeout(() => { overlayRef.current = false; setOverlayActive(false); }, 50);
     });
     dialog.onCreated(() => {
       refresh();
