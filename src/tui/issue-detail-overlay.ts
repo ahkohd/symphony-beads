@@ -97,8 +97,8 @@ export class IssueDetailOverlay {
     this.teardown(false);
     const token = ++this.showToken;
 
-    // Render a loading shell immediately so Esc works even while data is fetching.
-    this.renderLoading(issueId);
+    // Install Esc handling immediately so close works even during data fetch.
+    this.installKeyHandler();
 
     const [issue, comments] = await Promise.all([
       fetchIssueDetail(issueId),
@@ -106,11 +106,9 @@ export class IssueDetailOverlay {
     ]);
 
     // Overlay was closed or superseded while we were fetching.
-    if (token !== this.showToken || !this.isVisible) {
+    if (token !== this.showToken || this.keyHandler === null) {
       return;
     }
-
-    this.teardown(false);
 
     if (!issue) {
       this.renderError(issueId);
@@ -149,41 +147,6 @@ export class IssueDetailOverlay {
   }
 
   // -- Rendering -------------------------------------------------------------
-
-  private renderLoading(issueId: string): void {
-    const overlay = Box(
-      {
-        id: "issue-detail-overlay",
-        position: "absolute",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "100%",
-        backgroundColor: COLORS.bgOverlay,
-        justifyContent: "center",
-        alignItems: "center",
-        zIndex: 100,
-      },
-      Box(
-        {
-          borderStyle: "rounded",
-          borderColor: COLORS.border,
-          backgroundColor: COLORS.surface,
-          padding: 2,
-          flexDirection: "column",
-          gap: 1,
-          width: "50%",
-          maxHeight: "50%",
-        },
-        Text({ content: `Loading ${issueId}…`, fg: COLORS.accent }),
-        Text({ content: "Press Esc to close", fg: COLORS.textDim }),
-      ),
-    );
-
-    this.renderer.root.add(overlay);
-    this.overlayRoot = this.renderer.root.getRenderable("issue-detail-overlay") ?? null;
-    this.installKeyHandler();
-  }
 
   private renderError(issueId: string): void {
     const overlay = Box(
@@ -412,6 +375,10 @@ export class IssueDetailOverlay {
   // -- Key handling ----------------------------------------------------------
 
   private installKeyHandler(): void {
+    if (this.keyHandler) {
+      this.renderer.keyInput.off("keypress", this.keyHandler);
+    }
+
     this.keyHandler = (key: KeyEvent) => {
       if (key.name === "escape") {
         key.preventDefault();
@@ -419,6 +386,7 @@ export class IssueDetailOverlay {
         this.close();
       }
     };
+
     this.renderer.keyInput.on("keypress", this.keyHandler);
   }
 }
