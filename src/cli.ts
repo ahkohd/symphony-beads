@@ -3,7 +3,7 @@
 // Symphony CLI — Beads Edition
 //
 // Subcommands:
-//   start     Start the orchestrator daemon
+//   start     Start the orchestrator (daemonizes by default; -f for foreground)
 //   status    Show current orchestrator state
 //   validate  Validate WORKFLOW.md
 //   init      Initialize a new WORKFLOW.md
@@ -52,6 +52,7 @@ interface Args {
   port: number | null;
   host: string;
   verbose: boolean;
+  foreground: boolean;
   follow: boolean;
   lines: number;
   all: boolean;
@@ -65,6 +66,7 @@ function parseArgs(argv: string[]): Args {
     port: null,
     host: "127.0.0.1",
     verbose: false,
+    foreground: false,
     follow: false,
     lines: 50,
     all: false,
@@ -90,7 +92,13 @@ function parseArgs(argv: string[]): Args {
         args.port = parseInt(argv[++i] ?? "", 10);
         if (isNaN(args.port) || args.port < 1) args.port = null;
         break;
+      case "--foreground":
+        args.foreground = true;
+        break;
       case "-f":
+        args.follow = true;
+        args.foreground = true; // -f: --follow for logs, --foreground for start
+        break;
       case "--follow":
         args.follow = true;
         break;
@@ -143,6 +151,103 @@ async function cmdStart(args: Args): Promise<void> {
     for (const e of errors) log.error(e);
     process.exit(1);
   }
+
+  // If not foreground, daemonize by spawning a child with --foreground
+  if (!args.foreground) {
+    await daemonize(args, config);
+    return;
+  }
+
+  // --- Foreground mode (the actual orchestrator logic) ---
+  await cmdStartForeground(args, workflow);
+}
+
+/**
+ * Daemonize: spawn a child process running `symphony start --foreground`,
+ * redirect stdout/stderr to the log file, print PID, and exit.
+ */
+async function daemonize(args: Args, config: ReturnType<typeof parseWorkflow>["config"]): Promise<void> {
+  const projectDir = resolve(dirname(args.workflow));
+
+  // Pre-flight: check if already running (before spawning child)
+  const existingLock = await readProjectLock(projectDir);
+  if (existingLock && isPidAlive(existingLock.pid)) {
+    const msg = `symphony is already running (PID ${existingLock.pid}). Use symphony stop first.`;
+    if (args.json) {
+      console.log(JSON.stringify({ error: "already_running", pid: existingLock.pid, message: msg }));
+    } else {
+      log.error(msg);
+    }
+    process.exit(1);
+  }
+
+  // Determine log file path — required for daemon mode
+  const logFile = config.log.file
+    ? resolve(dirname(args.workflow), config.log.file)
+    : resolve(dirname(args.workflow), "symphony.log");
+
+  // Ensure log directory exists
+  const { mkdir: mkdirFs } = await import("fs/promises");
+  await mkdirFs(dirname(logFile), { recursive: true });
+
+  // Open log file for appending
+  const logOut = Bun.file(logFile);
+
+  // Build the child command args: replay original args but add --foreground
+  const childArgs: string[] = ["start", "--foreground"];
+  if (args.json) childArgs.push("--json");
+  if (args.workflow !== "WORKFLOW.md") childArgs.push("--workflow", args.workflow);
+  if (args.verbose) childArgs.push("--verbose");
+  if (args.port !== null) childArgs.push("--port", String(args.port));
+
+  // Spawn the daemon child. Use the same entry point (this script).
+  const entryPoint = resolve(import.meta.dir, "cli.ts");
+  const logErr = Bun.file(logFile);
+  const child = Bun.spawn(["bun", entryPoint, ...childArgs], {
+    cwd: process.cwd(),
+    stdout: logOut,
+    stderr: logErr,
+    stdin: "ignore",
+    env: { ...process.env },
+  });
+
+  // Detach from parent — allow child to outlive us
+  child.unref();
+
+  // Brief wait to verify the child started successfully
+  await Bun.sleep(500);
+
+  // Check if child is still alive
+  if (child.exitCode !== null) {
+    // Child already exited — something went wrong
+    const msg = `daemon failed to start (exit code ${child.exitCode}). Check ${logFile} for details.`;
+    if (args.json) {
+      console.log(JSON.stringify({ error: "daemon_failed", exit_code: child.exitCode, log_file: logFile }));
+    } else {
+      log.error(msg);
+    }
+    process.exit(1);
+  }
+
+  // Success — print PID and exit
+  if (args.json) {
+    console.log(JSON.stringify({ started: true, pid: child.pid, log_file: logFile }));
+  } else {
+    console.log(`symphony started (PID ${child.pid})`);
+  }
+
+  process.exit(0);
+}
+
+/**
+ * Foreground start: the actual orchestrator. Blocks the terminal.
+ * This is what the daemonized child runs, or what --foreground invokes directly.
+ */
+async function cmdStartForeground(
+  args: Args,
+  workflow: ReturnType<typeof parseWorkflow>,
+): Promise<void> {
+  const config = workflow.config;
 
   // Set up per-project log file if configured
   if (config.log.file) {
@@ -666,7 +771,7 @@ function printUsage(): void {
 Usage: symphony <command> [flags]
 
 Commands:
-  start      Start the orchestrator daemon
+  start      Start the orchestrator (daemonizes by default)
   status     Show current issue status from beads
   validate   Validate WORKFLOW.md configuration
   init       Create a new WORKFLOW.md
@@ -681,6 +786,9 @@ Flags:
   --verbose         Verbose output
   -h, --help        Show this help
   -v, --version     Show version
+
+Start flags:
+  -f, --foreground  Run in foreground (don't daemonize)
 
 Logs flags:
   -f, --follow     Follow the log file (like tail -f)

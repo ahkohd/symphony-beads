@@ -40,13 +40,7 @@ export async function acquireLock(
   if (existing) {
     if (isPidAlive(existing.pid)) {
       throw new Error(
-        `Another symphony instance is already running for this project.\n` +
-          `  PID:      ${existing.pid}\n` +
-          `  Project:  ${existing.project_path}\n` +
-          `  Started:  ${existing.started_at}\n` +
-          `  Lock:     ${lockPath}\n\n` +
-          `If the process is not running, remove the lock file:\n` +
-          `  rm ${lockPath}`,
+        `symphony is already running (PID ${existing.pid}). Use symphony stop first.`,
       );
     }
     // Stale lock — remove it
