@@ -2,26 +2,12 @@
 // TUI components — re-exports
 // ---------------------------------------------------------------------------
 
-export { launchTui } from "./app.tsx";
+export { launchKanban } from "./app.tsx";
 export {
-  launchDashboard,
-  formatElapsed,
-  formatCountdown,
-  truncStr,
-  formatTokens,
-export { IssueDetailOverlay, showIssueDetail } from "./issue-detail-overlay.ts";
-export { NewIssueDialog, showNewIssueDialog } from "./new-issue-dialog.ts";
-export {
-  fetchIssueDetail,
   fetchIssueComments,
-  fetchAgentSession,
-  type IssueDetail,
+  fetchIssueDetail,
   type IssueComment,
-  type AgentSessionInfo,
+  type IssueDetail,
 } from "./issue-data.ts";
-export {
-  OrchestratorClient,
-  type DashboardState,
-  type LiveDashboardState,
-  type StaticDashboardState,
-  type StaticIssue,
+export { IssueDetailOverlay } from "./issue-detail-overlay.ts";
+export { NewIssueDialog } from "./new-issue-dialog.ts";

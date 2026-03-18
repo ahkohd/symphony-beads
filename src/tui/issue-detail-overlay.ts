@@ -11,22 +11,22 @@
 // ---------------------------------------------------------------------------
 
 import {
-  createCliRenderer,
   Box,
-  Text,
-  ScrollBox,
   type CliRenderer,
+  createCliRenderer,
   type KeyEvent,
   type Renderable,
+  ScrollBox,
+  Text,
 } from "@opentui/core";
 
 import {
-  fetchIssueDetail,
-  fetchIssueComments,
-  fetchAgentSession,
-  type IssueDetail,
-  type IssueComment,
   type AgentSessionInfo,
+  fetchAgentSession,
+  fetchIssueComments,
+  fetchIssueDetail,
+  type IssueComment,
+  type IssueDetail,
 } from "./issue-data.ts";
 
 // -- Colors ------------------------------------------------------------------
@@ -166,8 +166,7 @@ export class IssueDetailOverlay {
     );
 
     this.renderer.root.add(overlay);
-    this.overlayRoot =
-      this.renderer.root.getRenderable("issue-detail-overlay") ?? null;
+    this.overlayRoot = this.renderer.root.getRenderable("issue-detail-overlay") ?? null;
     this.installKeyHandler();
   }
 
@@ -185,15 +184,11 @@ export class IssueDetailOverlay {
     children.push(this.buildMetadata(issue));
 
     // -- Separator --
-    children.push(
-      Text({ content: "\u2500".repeat(60), fg: COLORS.border }),
-    );
+    children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
 
     // -- Description --
     if (issue.description) {
-      children.push(
-        Text({ content: " Description", fg: COLORS.accent, attributes: 1 }),
-      );
+      children.push(Text({ content: " Description", fg: COLORS.accent, attributes: 1 }));
       children.push(this.buildDescription(issue.description));
     }
 
@@ -241,14 +236,10 @@ export class IssueDetailOverlay {
 
     // -- Footer --
     children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
-    children.push(
-      Text({ content: " Esc close  \u2191\u2193 scroll", fg: COLORS.textDim }),
-    );
+    children.push(Text({ content: " Esc close  \u2191\u2193 scroll", fg: COLORS.textDim }));
 
     // Filter out nulls
-    const validChildren = children.filter(
-      (c): c is NonNullable<VChild> => c != null,
-    );
+    const validChildren = children.filter((c): c is NonNullable<VChild> => c != null);
 
     // Build the modal panel inside a full-screen overlay
     const overlay = Box(
@@ -288,14 +279,11 @@ export class IssueDetailOverlay {
     );
 
     this.renderer.root.add(overlay);
-    this.overlayRoot =
-      this.renderer.root.getRenderable("issue-detail-overlay") ?? null;
+    this.overlayRoot = this.renderer.root.getRenderable("issue-detail-overlay") ?? null;
 
     // Focus the scroll box so arrow keys work
     const scrollBox = this.overlayRoot
-      ? (this.overlayRoot as Renderable).getRenderable?.(
-          "issue-detail-scrollbox",
-        )
+      ? (this.overlayRoot as Renderable).getRenderable?.("issue-detail-scrollbox")
       : null;
     if (scrollBox) {
       this.renderer.focusRenderable(scrollBox);
@@ -315,9 +303,7 @@ export class IssueDetailOverlay {
   private buildMetadata(issue: IssueDetail): VChild {
     const statusColor = STATUS_COLORS[issue.status] ?? COLORS.text;
     const priorityColor =
-      issue.priority !== null
-        ? (PRIORITY_COLORS[issue.priority] ?? COLORS.text)
-        : COLORS.textDim;
+      issue.priority !== null ? (PRIORITY_COLORS[issue.priority] ?? COLORS.text) : COLORS.textDim;
     const priorityLabel =
       issue.priority !== null
         ? (PRIORITY_LABELS[issue.priority] ?? `P${issue.priority}`)
@@ -332,9 +318,7 @@ export class IssueDetailOverlay {
       ),
       Text({ content: priorityLabel, fg: priorityColor }),
       Text({ content: issue.issue_type, fg: COLORS.magenta }),
-      issue.owner
-        ? Text({ content: issue.owner, fg: COLORS.textDim })
-        : Text({ content: "" }),
+      issue.owner ? Text({ content: issue.owner, fg: COLORS.textDim }) : Text({ content: "" }),
     );
   }
 
@@ -392,9 +376,7 @@ export class IssueDetailOverlay {
   }
 
   private buildComment(comment: IssueComment): VChild {
-    const timestamp = comment.created_at
-      ? formatTimestamp(comment.created_at)
-      : "";
+    const timestamp = comment.created_at ? formatTimestamp(comment.created_at) : "";
 
     return Box(
       { flexDirection: "column", gap: 0, paddingLeft: 1, paddingBottom: 1 },
@@ -403,10 +385,7 @@ export class IssueDetailOverlay {
         Text({ content: comment.author, fg: COLORS.cyan, attributes: 1 }),
         Text({ content: timestamp, fg: COLORS.textDim }),
       ),
-      Box(
-        { paddingLeft: 1 },
-        Text({ content: comment.body, fg: COLORS.text, wrapMode: "word" }),
-      ),
+      Box({ paddingLeft: 1 }, Text({ content: comment.body, fg: COLORS.text, wrapMode: "word" })),
     );
   }
 
@@ -417,8 +396,7 @@ export class IssueDetailOverlay {
     dependency_type: string;
   }): VChild {
     const statusColor = STATUS_COLORS[dep.status] ?? COLORS.textDim;
-    const typeLabel =
-      dep.dependency_type === "blocks" ? "\u2298 blocks" : dep.dependency_type;
+    const typeLabel = dep.dependency_type === "blocks" ? "\u2298 blocks" : dep.dependency_type;
 
     return Box(
       { flexDirection: "row", gap: 1, paddingLeft: 2 },
@@ -478,8 +456,8 @@ function formatTimestamp(iso: string): string {
 }
 
 function fmtNum(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
 }
 

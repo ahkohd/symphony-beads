@@ -2,9 +2,9 @@
 // Beads tracker client — wraps the `bd` CLI
 // ---------------------------------------------------------------------------
 
-import type { Issue, ServiceConfig } from "./types.ts";
 import { exec } from "./exec.ts";
 import { log } from "./log.ts";
+import type { Issue, ServiceConfig } from "./types.ts";
 
 export class BeadsTracker {
   private cwd: string;
@@ -43,9 +43,7 @@ export class BeadsTracker {
     const raw = await this.bd(["list", "--json"]);
     if (!raw) return [];
     const issues = this.parseList(raw);
-    return issues
-      .filter((i) => this.terminalStates.has(i.state.toLowerCase()))
-      .map((i) => i.id);
+    return issues.filter((i) => this.terminalStates.has(i.state.toLowerCase())).map((i) => i.id);
   }
 
   isActive(state: string): boolean {

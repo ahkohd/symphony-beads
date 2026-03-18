@@ -2,7 +2,7 @@
 // Issue data fetching tests — unit tests for issue-data.ts
 // ---------------------------------------------------------------------------
 
-import { describe, test, expect, mock, beforeEach } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Create a mock exec function that we can control per-test
 const mockExec = mock(async (_cmd: string[], _opts?: unknown) => ({
@@ -17,9 +17,7 @@ mock.module("../exec.ts", () => ({
 }));
 
 // Import AFTER mocking so the mock is in place
-const { fetchIssueDetail, fetchIssueComments, fetchAgentSession } = await import(
-  "./issue-data.ts"
-);
+const { fetchIssueDetail, fetchIssueComments, fetchAgentSession } = await import("./issue-data.ts");
 
 beforeEach(() => {
   mockExec.mockReset();
@@ -81,8 +79,7 @@ describe("fetchIssueDetail", () => {
       {
         id: "test-456",
         title: "Feature",
-        description:
-          "See PR: https://github.com/org/repo/pull/42 for details",
+        description: "See PR: https://github.com/org/repo/pull/42 for details",
         status: "review",
         priority: 2,
         issue_type: "feature",
@@ -304,10 +301,7 @@ describe("fetchAgentSession", () => {
   // We can't easily mock fetch in Bun tests without a library,
   // so we test the error/offline path (fetch to nonexistent server)
   test("returns null when API is unreachable", async () => {
-    const result = await fetchAgentSession(
-      "test-123",
-      "http://127.0.0.1:19999",
-    );
+    const result = await fetchAgentSession("test-123", "http://127.0.0.1:19999");
     expect(result).toBeNull();
   });
 

@@ -3,8 +3,8 @@
 // Supports writing to a per-project log file in addition to stdout/stderr.
 // ---------------------------------------------------------------------------
 
-import { appendFile, mkdir } from "fs/promises";
-import { dirname } from "path";
+import { appendFile, mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 
 let jsonMode = false;
 let logFilePath: string | null = null;
@@ -39,11 +39,11 @@ function emit(entry: LogEntry): void {
   if (jsonMode) {
     const out = JSON.stringify({ ts, ...entry });
     if (entry.level === "error") {
-      process.stderr.write(out + "\n");
+      process.stderr.write(`${out}\n`);
     } else {
-      process.stdout.write(out + "\n");
+      process.stdout.write(`${out}\n`);
     }
-    writeToFile(out + "\n");
+    writeToFile(`${out}\n`);
     return;
   }
 
@@ -73,10 +73,14 @@ function writeToFile(data: string): void {
 
 function prefixFor(level: string): string {
   switch (level) {
-    case "error": return "[error]";
-    case "warn":  return "[warn] ";
-    case "debug": return "[debug]";
-    default:      return "[info] ";
+    case "error":
+      return "[error]";
+    case "warn":
+      return "[warn] ";
+    case "debug":
+      return "[debug]";
+    default:
+      return "[info] ";
   }
 }
 

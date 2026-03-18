@@ -18,15 +18,15 @@
 // ---------------------------------------------------------------------------
 
 import {
-  createCliRenderer,
   Box,
-  Text,
-  Input,
-  Select,
   type CliRenderer,
+  createCliRenderer,
+  Input,
   type KeyEvent,
   type Renderable,
+  Select,
   type SelectOption,
+  Text,
 } from "@opentui/core";
 
 import { exec } from "../exec.ts";
@@ -163,14 +163,12 @@ export class NewIssueDialog {
       this.overlayRoot = null;
     }
 
-    const titleBorderColor =
-      this.focusedField === "title" ? COLORS.borderFocused : COLORS.border;
+    const titleBorderColor = this.focusedField === "title" ? COLORS.borderFocused : COLORS.border;
     const descBorderColor =
       this.focusedField === "description" ? COLORS.borderFocused : COLORS.border;
     const priorityBorderColor =
       this.focusedField === "priority" ? COLORS.borderFocused : COLORS.border;
-    const typeBorderColor =
-      this.focusedField === "type" ? COLORS.borderFocused : COLORS.border;
+    const typeBorderColor = this.focusedField === "type" ? COLORS.borderFocused : COLORS.border;
 
     // Build the title input
     const titleInput = Input({
@@ -360,8 +358,7 @@ export class NewIssueDialog {
     );
 
     this.renderer.root.add(overlay);
-    this.overlayRoot =
-      this.renderer.root.getRenderable("new-issue-dialog-overlay") ?? null;
+    this.overlayRoot = this.renderer.root.getRenderable("new-issue-dialog-overlay") ?? null;
 
     // Grab references to the input/select renderables
     this.titleInput = this.findRenderable("new-issue-title");

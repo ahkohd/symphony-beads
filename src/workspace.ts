@@ -2,11 +2,11 @@
 // Workspace manager — per-issue isolated directories
 // ---------------------------------------------------------------------------
 
-import { join, resolve } from "path";
-import { mkdir, rm } from "fs/promises";
-import type { ServiceConfig, Workspace } from "./types.ts";
+import { mkdir, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { exec } from "./exec.ts";
 import { log } from "./log.ts";
+import type { ServiceConfig, Workspace } from "./types.ts";
 
 export class WorkspaceManager {
   private root: string;
@@ -118,12 +118,17 @@ export class WorkspaceManager {
 
   private assertInRoot(path: string): void {
     const abs = resolve(path);
-    if (!abs.startsWith(this.root + "/") && abs !== this.root) {
+    if (!abs.startsWith(`${this.root}/`) && abs !== this.root) {
       throw new Error(`workspace path escapes root: ${abs}`);
     }
   }
 
-  private async runHook(name: string, cwd: string, script: string, env?: Record<string, string>): Promise<boolean> {
+  private async runHook(
+    name: string,
+    cwd: string,
+    script: string,
+    env?: Record<string, string>,
+  ): Promise<boolean> {
     log.debug("running hook", { hook: name, cwd });
     const result = await exec(["sh", "-lc", script], {
       cwd,

@@ -1,13 +1,11 @@
-import { describe, expect, it, beforeEach, mock } from "bun:test";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { ServiceConfig } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Mock exec() via mock.module — must be before importing tracker
 // ---------------------------------------------------------------------------
 
-const execMock = mock(() =>
-  Promise.resolve({ code: 0, stdout: "", stderr: "" }),
-);
+const execMock = mock(() => Promise.resolve({ code: 0, stdout: "", stderr: "" }));
 
 mock.module("./exec.ts", () => ({
   exec: execMock,
@@ -30,7 +28,13 @@ function makeConfig(overrides: Partial<ServiceConfig["tracker"]> = {}): ServiceC
     },
     polling: { interval_ms: 30000 },
     workspace: { root: "./workspaces" },
-    hooks: { after_create: null, before_run: null, after_run: null, before_remove: null, timeout_ms: 60000 },
+    hooks: {
+      after_create: null,
+      before_run: null,
+      after_run: null,
+      before_remove: null,
+      timeout_ms: 60000,
+    },
     agent: { max_concurrent: 5, max_turns: 20, max_retry_backoff_ms: 300000 },
     runner: { command: "pi -p", model: null, turn_timeout_ms: 3600000, stall_timeout_ms: 300000 },
     log: { file: null },
@@ -231,9 +235,7 @@ describe("BeadsTracker blocker extraction", () => {
   it("extracts blocks dependencies", async () => {
     execMock.mockResolvedValueOnce({
       code: 0,
-      stdout: JSON.stringify([
-        { id: "bd-31", status: "open", deps: ["blocks:bd-32"] },
-      ]),
+      stdout: JSON.stringify([{ id: "bd-31", status: "open", deps: ["blocks:bd-32"] }]),
       stderr: "",
     });
 
@@ -273,7 +275,11 @@ describe("BeadsTracker blocker extraction", () => {
     execMock.mockResolvedValueOnce({
       code: 0,
       stdout: JSON.stringify([
-        { id: "bd-35", status: "open", deps: ["blocked-by:bd-10", "blocked-by:bd-11", "blocks:bd-12"] },
+        {
+          id: "bd-35",
+          status: "open",
+          deps: ["blocked-by:bd-10", "blocked-by:bd-11", "blocks:bd-12"],
+        },
       ]),
       stderr: "",
     });

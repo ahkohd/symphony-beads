@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { resolveModel, injectJsonMode, parseJsonLine, isPiCommand } from "./runner.ts";
 import { parseWorkflow } from "./config.ts";
-import type { Issue, AgentEvent, TokenCount } from "./types.ts";
+import { injectJsonMode, isPiCommand, parseJsonLine, resolveModel } from "./runner.ts";
+import type { AgentEvent, Issue, TokenCount } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -333,7 +333,10 @@ describe("isPiCommand", () => {
 describe("injectJsonMode", () => {
   it("inserts --mode json after the binary", () => {
     expect(injectJsonMode(["pi", "--no-session"])).toEqual([
-      "pi", "--mode", "json", "--no-session",
+      "pi",
+      "--mode",
+      "json",
+      "--no-session",
     ]);
   });
 
@@ -343,7 +346,12 @@ describe("injectJsonMode", () => {
 
   it("preserves all arguments", () => {
     expect(injectJsonMode(["pi", "--no-session", "--model", "claude-sonnet"])).toEqual([
-      "pi", "--mode", "json", "--no-session", "--model", "claude-sonnet",
+      "pi",
+      "--mode",
+      "json",
+      "--no-session",
+      "--model",
+      "claude-sonnet",
     ]);
   });
 });
@@ -357,11 +365,7 @@ describe("parseJsonLine", () => {
     return { input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0, cost: 0 };
   }
 
-  function collectEvents(
-    line: string,
-    tokens?: TokenCount,
-    textParts?: string[],
-  ): AgentEvent[] {
+  function collectEvents(line: string, tokens?: TokenCount, textParts?: string[]): AgentEvent[] {
     const events: AgentEvent[] = [];
     const tok = tokens ?? makeTokens();
     const parts = textParts ?? [];
@@ -381,7 +385,13 @@ describe("parseJsonLine", () => {
           cacheRead: 5825,
           cacheWrite: 322,
           totalTokens: 6204,
-          cost: { input: 0.000015, output: 0.00135, cacheRead: 0.0029, cacheWrite: 0.002, total: 0.00629 },
+          cost: {
+            input: 0.000015,
+            output: 0.00135,
+            cacheRead: 0.0029,
+            cacheWrite: 0.002,
+            total: 0.00629,
+          },
         },
       },
     });
@@ -430,14 +440,28 @@ describe("parseJsonLine", () => {
       type: "message_end",
       message: {
         role: "assistant",
-        usage: { input: 3, output: 54, cacheRead: 5825, cacheWrite: 322, totalTokens: 6204, cost: { total: 0.006 } },
+        usage: {
+          input: 3,
+          output: 54,
+          cacheRead: 5825,
+          cacheWrite: 322,
+          totalTokens: 6204,
+          cost: { total: 0.006 },
+        },
       },
     });
     const line2 = JSON.stringify({
       type: "message_end",
       message: {
         role: "assistant",
-        usage: { input: 1, output: 4, cacheRead: 6147, cacheWrite: 70, totalTokens: 6222, cost: { total: 0.004 } },
+        usage: {
+          input: 1,
+          output: 4,
+          cacheRead: 6147,
+          cacheWrite: 70,
+          totalTokens: 6222,
+          cost: { total: 0.004 },
+        },
       },
     });
 
@@ -513,12 +537,26 @@ describe("parseJsonLine", () => {
         { role: "user", content: [{ type: "text", text: "do stuff" }] },
         {
           role: "assistant",
-          usage: { input: 3, output: 54, cacheRead: 5825, cacheWrite: 322, totalTokens: 6204, cost: { total: 0.006 } },
+          usage: {
+            input: 3,
+            output: 54,
+            cacheRead: 5825,
+            cacheWrite: 322,
+            totalTokens: 6204,
+            cost: { total: 0.006 },
+          },
         },
         { role: "toolResult", toolCallId: "t1" },
         {
           role: "assistant",
-          usage: { input: 1, output: 4, cacheRead: 6147, cacheWrite: 70, totalTokens: 6222, cost: { total: 0.004 } },
+          usage: {
+            input: 1,
+            output: 4,
+            cacheRead: 6147,
+            cacheWrite: 70,
+            totalTokens: 6222,
+            cost: { total: 0.004 },
+          },
         },
       ],
     });
@@ -610,9 +648,7 @@ describe("parseJsonLine", () => {
 
     const line = JSON.stringify({
       type: "agent_end",
-      messages: [
-        { role: "user", content: [{ type: "text", text: "hello" }] },
-      ],
+      messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
     });
 
     const events = collectEvents(line, tokens);

@@ -44,10 +44,12 @@ function render(template: string, ctx: Record<string, unknown>): string {
       const truthy = isTruthy(val);
       if (type === "#" && truthy) {
         if (Array.isArray(val)) {
-          return val.map((item) => {
-            const itemCtx = typeof item === "object" && item ? { ...ctx, ...item } : ctx;
-            return render(body, itemCtx as Record<string, unknown>);
-          }).join("");
+          return val
+            .map((item) => {
+              const itemCtx = typeof item === "object" && item ? { ...ctx, ...item } : ctx;
+              return render(body, itemCtx as Record<string, unknown>);
+            })
+            .join("");
         }
         return render(body, ctx);
       }

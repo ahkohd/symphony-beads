@@ -14,7 +14,7 @@ interface PrInfo {
   number: number;
   title: string;
   branch: string;
-  state: string;         // OPEN, MERGED, CLOSED
+  state: string; // OPEN, MERGED, CLOSED
   reviewDecision: string; // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, ""
   issueId: string | null;
 }
@@ -94,10 +94,15 @@ export class PrMonitor {
   private async listPrs(): Promise<PrInfo[] | null> {
     const result = await exec(
       [
-        "gh", "pr", "list",
-        "--state", "all",
-        "--limit", "50",
-        "--json", "number,title,headRefName,state,reviewDecision",
+        "gh",
+        "pr",
+        "list",
+        "--state",
+        "all",
+        "--limit",
+        "50",
+        "--json",
+        "number,title,headRefName,state,reviewDecision",
       ],
       { cwd: this.cwd },
     );
@@ -126,10 +131,7 @@ export class PrMonitor {
   }
 
   private async updateIssue(issueId: string, status: string): Promise<void> {
-    const result = await exec(
-      ["bd", "update", issueId, "-s", status],
-      { cwd: this.cwd },
-    );
+    const result = await exec(["bd", "update", issueId, "-s", status], { cwd: this.cwd });
     if (result.code !== 0) {
       log.warn("failed to update issue status", {
         issue_id: issueId,

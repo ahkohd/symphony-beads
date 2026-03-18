@@ -155,7 +155,10 @@ function splitFrontMatter(content: string): { frontMatter: string | null; body: 
   for (let i = 1; i < lines.length; i++) {
     if (lines[i]!.trim() === "---") {
       const fm = lines.slice(1, i).join("\n");
-      const body = lines.slice(i + 1).join("\n").trim();
+      const body = lines
+        .slice(i + 1)
+        .join("\n")
+        .trim();
       return { frontMatter: fm, body };
     }
   }
@@ -291,7 +294,7 @@ function parseYaml(yaml: string): Record<string, Record<string, unknown>> {
           text = blockLines.join("\n");
         } else {
           // clip and keep both end with \n (keep preserves extra blanks above)
-          text = blockLines.length > 0 ? blockLines.join("\n") + "\n" : "";
+          text = blockLines.length > 0 ? `${blockLines.join("\n")}\n` : "";
         }
 
         result[section]![key] = text;
@@ -316,7 +319,10 @@ function coerceValue(raw: string): unknown {
   if (/^-?\d+$/.test(v)) return parseInt(v, 10);
   if (/^-?\d+\.\d+$/.test(v)) return parseFloat(v);
   if (v.startsWith("[") && v.endsWith("]")) {
-    return v.slice(1, -1).split(",").map((s) => coerceValue(s.trim()));
+    return v
+      .slice(1, -1)
+      .split(",")
+      .map((s) => coerceValue(s.trim()));
   }
   return v.replace(/^["']|["']$/g, "");
 }
@@ -352,7 +358,7 @@ function resolvePaths(config: ServiceConfig): void {
   if (config.workspace.root.startsWith("~")) {
     config.workspace.root = config.workspace.root.replace("~", home);
   }
-  if (config.log.file && config.log.file.startsWith("~")) {
+  if (config.log.file?.startsWith("~")) {
     config.log.file = config.log.file.replace("~", home);
   }
   if (config.tracker.project_path.startsWith("~")) {

@@ -9,7 +9,10 @@
   "scripts": {
     "start": "bun run src/cli.ts start",
     "test": "bun test",
-    "typecheck": "bun x tsc --noEmit"
+    "lint": "bunx biome check src/ --ignore-pattern 'src/tui/app.tsx' --ignore-pattern 'src/tui/new-issue-dialog.ts'",
+    "lint:fix": "bunx biome check --fix src/ --ignore-pattern 'src/tui/app.tsx' --ignore-pattern 'src/tui/new-issue-dialog.ts'",
+    "typecheck": "bun x tsc --noEmit",
+    "check": "bun run lint && bun run typecheck && bun test"
   },
   "dependencies": {
     "@opentui/core": "^0.1.88",
@@ -17,6 +20,7 @@
     "react": "^19.2.4"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.7",
     "@types/bun": "latest",
     "@types/react": "^19.2.14"
   }

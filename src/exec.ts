@@ -49,7 +49,7 @@ export async function exec(
     if (timer) clearTimeout(timer);
 
     if (killed) {
-      return { code: 124, stdout, stderr: stderr + "\n(killed: timeout)" };
+      return { code: 124, stdout, stderr: `${stderr}\n(killed: timeout)` };
     }
 
     return { code, stdout, stderr };

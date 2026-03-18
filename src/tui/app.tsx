@@ -10,7 +10,7 @@
 
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard } from "@opentui/react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { exec } from "../exec.ts";
 import { IssueDetailOverlay } from "./issue-detail-overlay.ts";
 import { NewIssueDialog } from "./new-issue-dialog.ts";
@@ -94,15 +94,12 @@ async function fetchAllIssues(): Promise<Issue[]> {
   }
 }
 
-async function moveIssueStatus(
-  issueId: string,
-  newStatus: string,
-): Promise<boolean> {
+async function moveIssueStatus(issueId: string, newStatus: string): Promise<boolean> {
   try {
-    const result = await exec(
-      ["bd", "update", issueId, "--status", newStatus],
-      { cwd: process.cwd(), timeout: 10000 },
-    );
+    const result = await exec(["bd", "update", issueId, "--status", newStatus], {
+      cwd: process.cwd(),
+      timeout: 10000,
+    });
     return result.code === 0;
   } catch {
     return false;
@@ -111,10 +108,10 @@ async function moveIssueStatus(
 
 async function closeIssue(issueId: string): Promise<boolean> {
   try {
-    const result = await exec(
-      ["bd", "close", issueId, "--reason", "Closed from TUI"],
-      { cwd: process.cwd(), timeout: 10000 },
-    );
+    const result = await exec(["bd", "close", issueId, "--reason", "Closed from TUI"], {
+      cwd: process.cwd(),
+      timeout: 10000,
+    });
     return result.code === 0;
   } catch {
     return false;
@@ -124,7 +121,7 @@ async function closeIssue(issueId: string): Promise<boolean> {
 // -- Helpers -----------------------------------------------------------------
 
 function truncStr(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
 function bucketIssues(issues: Issue[]): Map<string, Issue[]> {
@@ -139,29 +136,17 @@ function bucketIssues(issues: Issue[]): Map<string, Issue[]> {
   return buckets;
 }
 
-function clampCursor(
-  cursor: CursorPos,
-  buckets: Map<string, Issue[]>,
-): CursorPos {
+function clampCursor(cursor: CursorPos, buckets: Map<string, Issue[]>): CursorPos {
   const col = Math.max(0, Math.min(cursor.col, COLUMNS.length - 1));
   const colKey = COLUMNS[col]!.key;
   const items = buckets.get(colKey) ?? [];
-  const row =
-    items.length > 0
-      ? Math.max(0, Math.min(cursor.row, items.length - 1))
-      : 0;
+  const row = items.length > 0 ? Math.max(0, Math.min(cursor.row, items.length - 1)) : 0;
   return { col, row };
 }
 
 // -- Components --------------------------------------------------------------
 
-function Header({
-  issueCount,
-  status,
-}: {
-  issueCount: number;
-  status: string;
-}) {
+function Header({ issueCount, status }: { issueCount: number; status: string }) {
   const statsStr = "";
 
   return (
@@ -181,20 +166,13 @@ function Header({
         <span fg={COLORS.textDim}> — {issueCount} issues</span>
         <span fg={COLORS.textDim}>{statsStr}</span>
       </text>
-      <text>
-        {status ? <span fg={COLORS.yellow}>  {status}</span> : null}
-      </text>
+      <text>{status ? <span fg={COLORS.yellow}> {status}</span> : null}</text>
     </box>
   );
 }
 
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
-  return String(n);
-}
 
-function fmtElapsed(ms: number): string {
+function _fmtElapsed(ms: number): string {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
@@ -212,31 +190,7 @@ function PriorityBadge({ priority }: { priority: number | null }) {
   return <span fg={badge.color}>{badge.label}</span>;
 }
 
-function LiveStatusBadge({ issue }: { issue: Issue }) {
-    const tok =
-      issue.tokens && issue.tokens.total > 0
-        ? ` ${fmtTokens(issue.tokens.total)}t`
-        : "";
-    return (
-      <text>
-        <span fg={COLORS.green}>▶ </span>
-        <span fg={COLORS.textDim}>
-          {elapsed}
-          {tok}
-        </span>
-      </text>
-    );
-  }
-    const attemptStr = issue.attempt ? `#${issue.attempt}` : "";
-    return (
-      <text>
-        <span fg={COLORS.yellow}>⟳ retry </span>
-        <span fg={COLORS.textDim}>{attemptStr}</span>
-      </text>
-    );
-  }
-  return null;
-}
+
 
 function IssueCard({
   issue,
@@ -247,16 +201,10 @@ function IssueCard({
   isSelected: boolean;
   maxWidth: number;
 }) {
-  const borderColor = isSelected
-    ? COLORS.borderHighlight
-        ? COLORS.green
-        : COLORS.yellow
-      : COLORS.border;
+  const borderColor = isSelected ? COLORS.borderHighlight : COLORS.border;
   const bgColor = isSelected ? COLORS.surface : COLORS.bg;
   const titleMaxLen = Math.max(8, maxWidth - 6);
-  const assignee = issue.owner
-    ? truncStr(issue.owner.replace(/^agent@/, "@"), 16)
-    : "";
+  const assignee = issue.owner ? truncStr(issue.owner.replace(/^agent@/, "@"), 16) : "";
 
   return (
     <box
@@ -286,13 +234,8 @@ function IssueCard({
         </text>
       </box>
       <text fg={COLORS.text}>{truncStr(issue.title, titleMaxLen)}</text>
-        <LiveStatusBadge issue={issue} />
-      ) : null}
-      {assignee ? (
-        <text fg={COLORS.textDim}>{assignee}</text>
-      ) : (
-        <text fg={COLORS.textDim}>—</text>
-      )}
+
+      {assignee ? <text fg={COLORS.textDim}>{assignee}</text> : <text fg={COLORS.textDim}>—</text>}
     </box>
   );
 }
@@ -370,6 +313,7 @@ function KanbanColumn({
   );
 }
 
+function Footer({ statusMsg }: { statusMsg: string }) {
   return (
     <box
       style={{
@@ -397,6 +341,7 @@ function KanbanColumn({
         <span fg={COLORS.textDim}>d</span>
         <span fg={COLORS.text}> close </span>
         <span fg={COLORS.textDim}>r</span>
+        <span fg={COLORS.text}> refresh </span>
         <span fg={COLORS.textDim}>q</span>
         <span fg={COLORS.text}> quit</span>
       </text>
@@ -407,47 +352,21 @@ function KanbanColumn({
 
 // -- Main App ----------------------------------------------------------------
 
-function KanbanApp({
-  renderer,
-}: {
-  renderer: Awaited<ReturnType<typeof createCliRenderer>>;
-}) {
+function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCliRenderer>> }) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [cursor, setCursor] = useState<CursorPos>({ col: 0, row: 0 });
   const [statusMsg, setStatusMsg] = useState("loading…");
-  
   const overlayRef = useRef(false);
-    running: number;
-    retrying: number;
-    tokens: number;
-  } | null>(null);
-
-  // Persistent client instance (survives re-renders)
-  }
 
   const buckets = bucketIssues(issues);
 
   // -- Data refresh ----------------------------------------------------------
 
   const refresh = useCallback(async () => {
-    // Always fetch the full issue list from bd (the kanban needs all issues)
     const allIssues = await fetchAllIssues();
-
-    // Try to get live orchestrator data
-
-    if (snapshot) {
-      // Enrich issues with live running/retrying status
-      setIssues(enriched);
-        running: snapshot.counts.running,
-        retrying: snapshot.counts.retrying,
-        tokens: snapshot.totals.total_tokens,
-      });
-    } else {
-      setIssues(allIssues);
-    }
-
+    setIssues(allIssues);
     setStatusMsg("");
-  }, [client]);
+  }, []);
 
   useEffect(() => {
     refresh();
@@ -460,129 +379,128 @@ function KanbanApp({
     setCursor((prev) => clampCursor(prev, buckets));
   }, [issues]);
 
-  // -- Helpers ---------------------------------------------------------------
+// -- Helpers ---------------------------------------------------------------
 
-  const getSelectedIssue = useCallback((): Issue | null => {
-    const colKey = COLUMNS[cursor.col]?.key;
-    if (!colKey) return null;
-    const items = buckets.get(colKey) ?? [];
-    return items[cursor.row] ?? null;
-  }, [cursor, buckets]);
+const getSelectedIssue = useCallback((): Issue | null => {
+  const colKey = COLUMNS[cursor.col]?.key;
+  if (!colKey) return null;
+  const items = buckets.get(colKey) ?? [];
+  return items[cursor.row] ?? null;
+}, [cursor, buckets]);
 
-  // -- Actions ---------------------------------------------------------------
+// -- Actions ---------------------------------------------------------------
 
-  const handleMoveForward = useCallback(async () => {
-    const issue = getSelectedIssue();
-    if (!issue) return;
-    const currentIdx = STATUS_ORDER.indexOf(issue.status);
-    if (currentIdx < 0 || currentIdx >= STATUS_ORDER.length - 1) {
-      setStatusMsg("already at last status");
-      return;
-    }
-    const nextStatus = STATUS_ORDER[currentIdx + 1]!;
-    setStatusMsg(`moving ${issue.id} → ${nextStatus}…`);
-    const ok = await moveIssueStatus(issue.id, nextStatus);
-    if (ok) {
-      setStatusMsg(`moved ${issue.id} → ${nextStatus}`);
-      await refresh();
-    } else {
-      setStatusMsg(`failed to move ${issue.id}`);
-    }
-  }, [getSelectedIssue, refresh]);
+const handleMoveForward = useCallback(async () => {
+  const issue = getSelectedIssue();
+  if (!issue) return;
+  const currentIdx = STATUS_ORDER.indexOf(issue.status);
+  if (currentIdx < 0 || currentIdx >= STATUS_ORDER.length - 1) {
+    setStatusMsg("already at last status");
+    return;
+  }
+  const nextStatus = STATUS_ORDER[currentIdx + 1]!;
+  setStatusMsg(`moving ${issue.id} → ${nextStatus}…`);
+  const ok = await moveIssueStatus(issue.id, nextStatus);
+  if (ok) {
+    setStatusMsg(`moved ${issue.id} → ${nextStatus}`);
+    await refresh();
+  } else {
+    setStatusMsg(`failed to move ${issue.id}`);
+  }
+}, [getSelectedIssue, refresh]);
 
-  const handleMoveBackward = useCallback(async () => {
-    const issue = getSelectedIssue();
-    if (!issue) return;
-    const currentIdx = STATUS_ORDER.indexOf(issue.status);
-    if (currentIdx <= 0) {
-      setStatusMsg("already at first status");
-      return;
-    }
-    const prevStatus = STATUS_ORDER[currentIdx - 1]!;
-    setStatusMsg(`moving ${issue.id} → ${prevStatus}…`);
-    const ok = await moveIssueStatus(issue.id, prevStatus);
-    if (ok) {
-      setStatusMsg(`moved ${issue.id} → ${prevStatus}`);
-      await refresh();
-    } else {
-      setStatusMsg(`failed to move ${issue.id}`);
-    }
-  }, [getSelectedIssue, refresh]);
+const handleMoveBackward = useCallback(async () => {
+  const issue = getSelectedIssue();
+  if (!issue) return;
+  const currentIdx = STATUS_ORDER.indexOf(issue.status);
+  if (currentIdx <= 0) {
+    setStatusMsg("already at first status");
+    return;
+  }
+  const prevStatus = STATUS_ORDER[currentIdx - 1]!;
+  setStatusMsg(`moving ${issue.id} → ${prevStatus}…`);
+  const ok = await moveIssueStatus(issue.id, prevStatus);
+  if (ok) {
+    setStatusMsg(`moved ${issue.id} → ${prevStatus}`);
+    await refresh();
+  } else {
+    setStatusMsg(`failed to move ${issue.id}`);
+  }
+}, [getSelectedIssue, refresh]);
 
-  const handleClose = useCallback(async () => {
-    const issue = getSelectedIssue();
-    if (!issue) return;
-    setStatusMsg(`closing ${issue.id}…`);
-    const ok = await closeIssue(issue.id);
-    if (ok) {
-      setStatusMsg(`closed ${issue.id}`);
-      await refresh();
-    } else {
-      setStatusMsg(`failed to close ${issue.id}`);
-    }
-  }, [getSelectedIssue, refresh]);
+const handleClose = useCallback(async () => {
+  const issue = getSelectedIssue();
+  if (!issue) return;
+  setStatusMsg(`closing ${issue.id}…`);
+  const ok = await closeIssue(issue.id);
+  if (ok) {
+    setStatusMsg(`closed ${issue.id}`);
+    await refresh();
+  } else {
+    setStatusMsg(`failed to close ${issue.id}`);
+  }
+}, [getSelectedIssue, refresh]);
 
-  const handleSendToBacklog = useCallback(async () => {
-    const issue = getSelectedIssue();
-    if (!issue) return;
-    if (issue.status === "deferred") {
-      setStatusMsg(`${issue.id} is already deferred`);
-      return;
-    }
-    setStatusMsg(`deferring ${issue.id}…`);
-    const ok = await moveIssueStatus(issue.id, "deferred");
-    if (ok) {
-      setStatusMsg(`deferred ${issue.id}`);
-      await refresh();
-    } else {
-      setStatusMsg(`failed to defer ${issue.id}`);
-    }
-  }, [getSelectedIssue, refresh]);
+const handleSendToBacklog = useCallback(async () => {
+  const issue = getSelectedIssue();
+  if (!issue) return;
+  if (issue.status === "deferred") {
+    setStatusMsg(`${issue.id} is already deferred`);
+    return;
+  }
+  setStatusMsg(`deferring ${issue.id}…`);
+  const ok = await moveIssueStatus(issue.id, "deferred");
+  if (ok) {
+    setStatusMsg(`deferred ${issue.id}`);
+    await refresh();
+  } else {
+    setStatusMsg(`failed to defer ${issue.id}`);
+  }
+}, [getSelectedIssue, refresh]);
 
-  const handlePromoteFromBacklog = useCallback(async () => {
-    const issue = getSelectedIssue();
-    if (!issue) return;
-    if (issue.status !== "deferred") {
-      setStatusMsg(`${issue.id} is not deferred`);
-      return;
-    }
-    setStatusMsg(`promoting ${issue.id} → open…`);
-    const ok = await moveIssueStatus(issue.id, "open");
-    if (ok) {
-      setStatusMsg(`promoted ${issue.id} → open`);
-      await refresh();
-    } else {
-      setStatusMsg(`failed to promote ${issue.id}`);
-    }
-  }, [getSelectedIssue, refresh]);
+const handlePromoteFromBacklog = useCallback(async () => {
+  const issue = getSelectedIssue();
+  if (!issue) return;
+  if (issue.status !== "deferred") {
+    setStatusMsg(`${issue.id} is not deferred`);
+    return;
+  }
+  setStatusMsg(`promoting ${issue.id} → open…`);
+  const ok = await moveIssueStatus(issue.id, "open");
+  if (ok) {
+    setStatusMsg(`promoted ${issue.id} → open`);
+    await refresh();
+  } else {
+    setStatusMsg(`failed to promote ${issue.id}`);
+  }
+}, [getSelectedIssue, refresh]);
 
-  const handleShowDetail = useCallback(async () => {
-    const issue = getSelectedIssue();
-    if (!issue) return;
-    overlayRef.current = true;
-    const overlay = new IssueDetailOverlay(renderer);
-    overlay.onClose(() => {
-      // Delay ref reset so the same Esc keypress doesn't also exit the app
-      overlayRef.current = false;
-    });
-    // Pass the discovered API base so the overlay can fetch agent session data
-  }, [getSelectedIssue, renderer, client]);
+const handleShowDetail = useCallback(async () => {
+  const issue = getSelectedIssue();
+  if (!issue) return;
+  overlayRef.current = true;
+  const overlay = new IssueDetailOverlay(renderer);
+  overlay.onClose(() => {
+    overlayRef.current = false;
+  });
+  await overlay.show(issue.id);
+}, [getSelectedIssue, renderer]);
 
-  const handleNewIssue = useCallback(() => {
-    overlayRef.current = true;
-    const dialog = new NewIssueDialog(renderer);
-    dialog.onClose(() => {
-      overlayRef.current = false;
-    });
-    dialog.onCreated(() => {
-      refresh();
-    });
-    dialog.show();
-  }, [renderer, refresh]);
+const handleNewIssue = useCallback(() => {
+  overlayRef.current = true;
+  const dialog = new NewIssueDialog(renderer);
+  dialog.onClose(() => {
+    overlayRef.current = false;
+  });
+  dialog.onCreated(() => {
+    refresh();
+  });
+  dialog.show();
+}, [renderer, refresh]);
 
-  // -- Keyboard --------------------------------------------------------------
+// -- Keyboard --------------------------------------------------------------
 
-  useKeyboard((key) => {
+useKeyboard((key) => {
     // Don't handle keys when an overlay is active
     if (overlayRef.current) return;
 
@@ -593,10 +511,7 @@ function KanbanApp({
 
       case "r":
         setStatusMsg("refreshing…");
-        // If live, trigger an immediate orchestrator poll cycle first
-        } else {
-          refresh();
-        }
+        refresh();
         break;
 
       case "left":
@@ -680,11 +595,11 @@ function KanbanApp({
         handleClose();
         break;
     }
-  });
+})
 
-  // -- Render ----------------------------------------------------------------
+// -- Render ----------------------------------------------------------------
 
-  return (
+return (
     <box
       style={{
         flexDirection: "column",
@@ -720,6 +635,7 @@ function KanbanApp({
         })}
       </box>
 
+      <Footer statusMsg={statusMsg} />
     </box>
   );
 }

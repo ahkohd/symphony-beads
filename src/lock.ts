@@ -6,8 +6,8 @@
 // Global:      ~/.symphony/instances/<hash>.json for cross-project checks
 // ---------------------------------------------------------------------------
 
-import { resolve, dirname } from "path";
-import { mkdir, readdir, rm } from "fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
+import { resolve } from "node:path";
 import { log } from "./log.ts";
 
 /** Stored in .symphony.lock and in the global instance registry. */
@@ -56,7 +56,7 @@ export async function acquireLock(
     started_at: new Date().toISOString(),
   };
 
-  await Bun.write(lockPath, JSON.stringify(info, null, 2) + "\n");
+  await Bun.write(lockPath, `${JSON.stringify(info, null, 2)}\n`);
   return lockPath;
 }
 
@@ -94,7 +94,7 @@ export async function registerInstance(info: LockInfo): Promise<void> {
   const dir = registryDir();
   await mkdir(dir, { recursive: true });
   const file = resolve(dir, registryKey(info.project_path));
-  await Bun.write(file, JSON.stringify(info, null, 2) + "\n");
+  await Bun.write(file, `${JSON.stringify(info, null, 2)}\n`);
 }
 
 /** Remove this instance from the global registry. */

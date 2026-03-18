@@ -2,7 +2,10 @@
 // Orchestrator — poll / dispatch / reconcile / retry loop
 // ---------------------------------------------------------------------------
 
-import { resolve } from "path";
+import { resolve } from "node:path";
+import { log } from "./log.ts";
+import { AgentRunner } from "./runner.ts";
+import { BeadsTracker } from "./tracker.ts";
 import type {
   AgentEvent,
   AgentTotals,
@@ -12,10 +15,7 @@ import type {
   ServiceConfig,
   TokenCount,
 } from "./types.ts";
-import { BeadsTracker } from "./tracker.ts";
 import { WorkspaceManager } from "./workspace.ts";
-import { AgentRunner } from "./runner.ts";
-import { log } from "./log.ts";
 
 export class Orchestrator {
   private config: ServiceConfig;
@@ -269,9 +269,7 @@ export class Orchestrator {
 
     // Fire-and-forget — the runner resolves/rejects asynchronously
     this.runner
-      .run(issue, attempt, this.promptTemplate, this.workspace, (ev) =>
-        this.onEvent(issue.id, ev),
-      )
+      .run(issue, attempt, this.promptTemplate, this.workspace, (ev) => this.onEvent(issue.id, ev))
       .then(() => this.onWorkerExit(issue.id, null))
       .catch((err) => this.onWorkerExit(issue.id, err));
   }
@@ -339,14 +337,21 @@ export class Orchestrator {
     if (existing) clearTimeout(existing.timer);
 
     const delay = error
-      ? Math.min(10_000 * Math.pow(2, attempt - 1), this.config.agent.max_retry_backoff_ms)
+      ? Math.min(10_000 * 2 ** (attempt - 1), this.config.agent.max_retry_backoff_ms)
       : 1_000; // continuation retry
 
     const dueAt = Date.now() + delay;
     log.debug("retry scheduled", { issue_id: issueId, attempt, delay_ms: delay, error });
 
     const timer = setTimeout(() => this.handleRetry(issueId), delay);
-    this.retries.set(issueId, { issue_id: issueId, identifier, attempt, due_at: dueAt, timer, error });
+    this.retries.set(issueId, {
+      issue_id: issueId,
+      identifier,
+      attempt,
+      due_at: dueAt,
+      timer,
+      error,
+    });
   }
 
   private async handleRetry(issueId: string): Promise<void> {

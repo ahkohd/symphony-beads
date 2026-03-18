@@ -8,8 +8,8 @@
 // On invalid reload: keeps last known good config, logs the error.
 // ---------------------------------------------------------------------------
 
-import { watch, type FSWatcher } from "fs";
-import { stat } from "fs/promises";
+import { type FSWatcher, watch } from "node:fs";
+import { stat } from "node:fs/promises";
 import { parseWorkflow, validateConfig } from "./config.ts";
 import { log } from "./log.ts";
 import type { Orchestrator } from "./orchestrator.ts";

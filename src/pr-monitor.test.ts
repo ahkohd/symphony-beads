@@ -80,9 +80,27 @@ describe("PrMonitor PR filtering", () => {
 
   it("filters to only issue/ branches", () => {
     const prs: GhPrRaw[] = [
-      { number: 1, title: "Issue PR", headRefName: "issue/bd-1", state: "OPEN", reviewDecision: "" },
-      { number: 2, title: "Feature PR", headRefName: "feature/cool", state: "OPEN", reviewDecision: "" },
-      { number: 3, title: "Another Issue", headRefName: "issue/bd-2", state: "MERGED", reviewDecision: "APPROVED" },
+      {
+        number: 1,
+        title: "Issue PR",
+        headRefName: "issue/bd-1",
+        state: "OPEN",
+        reviewDecision: "",
+      },
+      {
+        number: 2,
+        title: "Feature PR",
+        headRefName: "feature/cool",
+        state: "OPEN",
+        reviewDecision: "",
+      },
+      {
+        number: 3,
+        title: "Another Issue",
+        headRefName: "issue/bd-2",
+        state: "MERGED",
+        reviewDecision: "APPROVED",
+      },
     ];
     const filtered = filterAndMap(prs);
     expect(filtered).toHaveLength(2);
@@ -100,7 +118,13 @@ describe("PrMonitor PR filtering", () => {
 
   it("identifies merged PRs", () => {
     const prs: GhPrRaw[] = [
-      { number: 1, title: "PR", headRefName: "issue/bd-1", state: "MERGED", reviewDecision: "APPROVED" },
+      {
+        number: 1,
+        title: "PR",
+        headRefName: "issue/bd-1",
+        state: "MERGED",
+        reviewDecision: "APPROVED",
+      },
     ];
     const filtered = filterAndMap(prs);
     expect(filtered[0]!.state).toBe("MERGED");
@@ -108,7 +132,13 @@ describe("PrMonitor PR filtering", () => {
 
   it("identifies changes-requested PRs", () => {
     const prs: GhPrRaw[] = [
-      { number: 1, title: "PR", headRefName: "issue/bd-1", state: "OPEN", reviewDecision: "CHANGES_REQUESTED" },
+      {
+        number: 1,
+        title: "PR",
+        headRefName: "issue/bd-1",
+        state: "OPEN",
+        reviewDecision: "CHANGES_REQUESTED",
+      },
     ];
     const filtered = filterAndMap(prs);
     expect(filtered[0]!.state).toBe("OPEN");
@@ -173,10 +203,7 @@ describe("PrMonitor processed-PR tracking", () => {
    * Simulates the check() loop logic with the processedPrs set.
    * Returns actions taken per PR so tests can assert behaviour.
    */
-  function simulateCheck(
-    prs: PrInfo[],
-    processedPrs: Set<number>,
-  ): Action[] {
+  function simulateCheck(prs: PrInfo[], processedPrs: Set<number>): Action[] {
     const actions: Action[] = [];
     for (const pr of prs) {
       if (pr.state === "OPEN" && pr.reviewDecision !== "CHANGES_REQUESTED") {
@@ -253,9 +280,7 @@ describe("PrMonitor processed-PR tracking", () => {
 
   it("marks PRs without issue ID as processed", () => {
     const processed = new Set<number>();
-    const prs: PrInfo[] = [
-      { number: 40, state: "MERGED", reviewDecision: "", issueId: null },
-    ];
+    const prs: PrInfo[] = [{ number: 40, state: "MERGED", reviewDecision: "", issueId: null }];
     expect(simulateCheck(prs, processed)).toEqual(["skip-no-issue"]);
     expect(processed.has(40)).toBe(true);
     // Should be skipped on next tick
@@ -277,9 +302,7 @@ describe("PrMonitor processed-PR tracking", () => {
 
   it("plain OPEN PR is never added to processed set", () => {
     const processed = new Set<number>();
-    const prs: PrInfo[] = [
-      { number: 60, state: "OPEN", reviewDecision: "", issueId: "bd-8" },
-    ];
+    const prs: PrInfo[] = [{ number: 60, state: "OPEN", reviewDecision: "", issueId: "bd-8" }];
     simulateCheck(prs, processed);
     expect(processed.has(60)).toBe(false);
     simulateCheck(prs, processed);

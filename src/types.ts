@@ -44,7 +44,6 @@ export interface ServiceConfig {
   log: LogConfig;
 }
 
-
 export interface LogConfig {
   file: string | null;
 }

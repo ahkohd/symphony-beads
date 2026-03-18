@@ -67,9 +67,7 @@ export async function fetchIssueDetail(issueId: string): Promise<IssueDetail | n
     if (issue.pr_url) {
       prUrl = issue.pr_url;
     } else if (issue.description) {
-      const prMatch = issue.description.match(
-        /https?:\/\/github\.com\/[^\s]+\/pull\/\d+/,
-      );
+      const prMatch = issue.description.match(/https?:\/\/github\.com\/[^\s]+\/pull\/\d+/);
       if (prMatch) prUrl = prMatch[0];
     }
 
@@ -109,7 +107,11 @@ export async function fetchIssueComments(issueId: string): Promise<IssueComment[
     return parsed.map((c: Record<string, unknown>) => ({
       id: (c.id as string | undefined) ?? undefined,
       author: (c.author as string | undefined) ?? (c.created_by as string | undefined) ?? "unknown",
-      body: (c.text as string | undefined) ?? (c.body as string | undefined) ?? (c.content as string | undefined) ?? "",
+      body:
+        (c.text as string | undefined) ??
+        (c.body as string | undefined) ??
+        (c.content as string | undefined) ??
+        "",
       created_at: (c.created_at as string | undefined) ?? "",
     }));
   } catch {
@@ -126,10 +128,9 @@ export async function fetchAgentSession(
   apiBase = "http://127.0.0.1:4500",
 ): Promise<AgentSessionInfo | null> {
   try {
-    const resp = await fetch(
-      `${apiBase}/api/v1/${encodeURIComponent(issueId)}`,
-      { signal: AbortSignal.timeout(2000) },
-    );
+    const resp = await fetch(`${apiBase}/api/v1/${encodeURIComponent(issueId)}`, {
+      signal: AbortSignal.timeout(2000),
+    });
     if (!resp.ok) return null;
 
     const data = (await resp.json()) as Record<string, unknown>;
@@ -137,7 +138,14 @@ export async function fetchAgentSession(
     if (!running) return null;
 
     const tokens = running.tokens as
-      | { input: number; output: number; cache_read: number; cache_write: number; total: number; cost: number }
+      | {
+          input: number;
+          output: number;
+          cache_read: number;
+          cache_write: number;
+          total: number;
+          cost: number;
+        }
       | undefined;
     return {
       session_id: (running.session_id as string | null) ?? null,

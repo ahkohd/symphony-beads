@@ -63,13 +63,9 @@ function eligible(
 
 // -- Replicate retry backoff calculation -------------------------------------
 
-function computeRetryDelay(
-  attempt: number,
-  maxBackoffMs: number,
-  isError: boolean,
-): number {
+function computeRetryDelay(attempt: number, maxBackoffMs: number, isError: boolean): number {
   if (!isError) return 1_000; // continuation retry
-  return Math.min(10_000 * Math.pow(2, attempt - 1), maxBackoffMs);
+  return Math.min(10_000 * 2 ** (attempt - 1), maxBackoffMs);
 }
 
 // ---------------------------------------------------------------------------
@@ -323,7 +319,9 @@ describe("Orchestrator reconciliation logic", () => {
 // ---------------------------------------------------------------------------
 
 describe("Orchestrator per-state concurrency limits", () => {
-  interface RunningInfo { state: string }
+  interface RunningInfo {
+    state: string;
+  }
 
   /**
    * Mirrors the private Orchestrator.slotsAvailable() method.
@@ -357,9 +355,7 @@ describe("Orchestrator per-state concurrency limits", () => {
   });
 
   it("allows dispatch when per-state limit is not reached", () => {
-    const running = new Map<string, RunningInfo>([
-      ["bd-1", { state: "open" }],
-    ]);
+    const running = new Map<string, RunningInfo>([["bd-1", { state: "open" }]]);
     expect(slotsAvailable(running, 5, { open: 3 }, "open")).toBe(true);
   });
 
@@ -402,9 +398,7 @@ describe("Orchestrator per-state concurrency limits", () => {
   });
 
   it("blocks when per-state limit of 1 is reached", () => {
-    const running = new Map<string, RunningInfo>([
-      ["bd-1", { state: "open" }],
-    ]);
+    const running = new Map<string, RunningInfo>([["bd-1", { state: "open" }]]);
     expect(slotsAvailable(running, 5, { open: 1 }, "open")).toBe(false);
   });
 
@@ -446,7 +440,10 @@ describe("Orchestrator per-state concurrency limits", () => {
 
 describe("Orchestrator snapshot structure", () => {
   it("counts reflect running state", () => {
-    const running = new Map([["bd-1", {}], ["bd-2", {}]]);
+    const running = new Map([
+      ["bd-1", {}],
+      ["bd-2", {}],
+    ]);
     const retries = new Map([["bd-3", {}]]);
     const completed = new Set(["bd-4", "bd-5"]);
     const claimed = new Set(["bd-1", "bd-2", "bd-3"]);

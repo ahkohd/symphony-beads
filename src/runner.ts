@@ -2,12 +2,12 @@
 // Agent runner — spawns pi sessions for each issue
 // ---------------------------------------------------------------------------
 
-import { join } from "path";
-import type { AgentEvent, Issue, RunnerConfig, TokenCount } from "./types.ts";
-import { WorkspaceManager } from "./workspace.ts";
-import { renderPrompt } from "./template.ts";
+import { join } from "node:path";
 import { exec } from "./exec.ts";
 import { log } from "./log.ts";
+import { renderPrompt } from "./template.ts";
+import type { AgentEvent, Issue, RunnerConfig, TokenCount } from "./types.ts";
+import type { WorkspaceManager } from "./workspace.ts";
 
 export type EventCallback = (event: AgentEvent) => void;
 
@@ -143,7 +143,12 @@ export class AgentRunner {
 
   // -- Private ---------------------------------------------------------------
 
-  private spawn(cwd: string, prompt: string, issue: Issue, onEvent: EventCallback): Promise<string> {
+  private spawn(
+    cwd: string,
+    prompt: string,
+    issue: Issue,
+    onEvent: EventCallback,
+  ): Promise<string> {
     const issueId = issue.id;
     return new Promise<string>((resolve, reject) => {
       const { command, env } = this.buildCommand(issue);
@@ -191,7 +196,14 @@ export class AgentRunner {
 
       // For pi JSON mode: stream-parse stdout line-by-line for token events.
       // For non-pi runners: accumulate raw text.
-      const tokens: TokenCount = { input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0, cost: 0 };
+      const tokens: TokenCount = {
+        input: 0,
+        output: 0,
+        cache_read: 0,
+        cache_write: 0,
+        total: 0,
+        cost: 0,
+      };
       const textParts: string[] = [];
       const rawChunks: string[] = [];
 
@@ -289,14 +301,10 @@ interface GhComment {
  * Check if a PR exists for the given branch and return formatted review
  * feedback. Returns null if no PR exists or there's no actionable feedback.
  */
-async function fetchPrReviewFeedback(
-  cwd: string,
-  branchName: string,
-): Promise<string | null> {
-  const result = await exec(
-    ["gh", "pr", "view", branchName, "--json", "number,reviews,comments"],
-    { cwd },
-  );
+async function fetchPrReviewFeedback(cwd: string, branchName: string): Promise<string | null> {
+  const result = await exec(["gh", "pr", "view", branchName, "--json", "number,reviews,comments"], {
+    cwd,
+  });
 
   if (result.code !== 0) {
     // No PR found or gh CLI not available — not a rework
@@ -417,7 +425,11 @@ export function parseJsonLine(
     // agent_end carries the full message list with per-message usage.
     // This is the authoritative final accounting — replace accumulated values.
     if (event.type === "agent_end" && Array.isArray(event.messages)) {
-      let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
+      let input = 0,
+        output = 0,
+        cacheRead = 0,
+        cacheWrite = 0,
+        cost = 0;
       for (const msg of event.messages) {
         if (msg.role === "assistant" && msg.usage && typeof msg.usage === "object") {
           input += num(msg.usage.input);
@@ -472,7 +484,7 @@ export function parseJsonLine(
 
 /** Safely extract a number from a value, returning 0 for non-numbers. */
 function num(v: unknown): number {
-  return typeof v === "number" && !isNaN(v) ? v : 0;
+  return typeof v === "number" && !Number.isNaN(v) ? v : 0;
 }
 
 /** Emit a token_update event with a snapshot of the current token state. */
@@ -498,10 +510,7 @@ function emitTokenUpdate(tokens: TokenCount, onEvent: EventCallback): void {
  *
  * First match wins. Returns null if no models map or no match.
  */
-export function resolveModel(
-  issue: Issue,
-  models: Record<string, string> | null,
-): string | null {
+export function resolveModel(issue: Issue, models: Record<string, string> | null): string | null {
   if (!models) return null;
 
   // 1. Per-issue metadata override

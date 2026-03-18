@@ -2,10 +2,10 @@
 // CLI integration tests — daemonize, lock, and flag behavior
 // ---------------------------------------------------------------------------
 
-import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { resolve, dirname, join } from "path";
-import { mkdtemp, rm, writeFile, readFile, mkdir } from "fs/promises";
-import { tmpdir } from "os";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { findProjectRoot, parseArgs, resolveConfigPaths } from "./cli.ts";
 import type { ServiceConfig } from "./types.ts";
 
@@ -80,10 +80,16 @@ afterEach(async () => {
     if (await lockFile.exists()) {
       const lockData = JSON.parse(await lockFile.text());
       if (lockData.pid && lockData.pid !== process.pid) {
-        try { process.kill(lockData.pid, "SIGKILL"); } catch { /* already dead */ }
+        try {
+          process.kill(lockData.pid, "SIGKILL");
+        } catch {
+          /* already dead */
+        }
       }
     }
-  } catch { /* no lock file */ }
+  } catch {
+    /* no lock file */
+  }
   await rm(tempDir, { recursive: true, force: true });
 });
 
@@ -183,7 +189,9 @@ describe("parseArgs -f flag", () => {
 
 describe("CLI validate", () => {
   it("validates a correct WORKFLOW.md", async () => {
-    const { exitCode } = await runCli(["validate", "--workflow", join(tempDir, "WORKFLOW.md")], { cwd: tempDir });
+    const { exitCode } = await runCli(["validate", "--workflow", join(tempDir, "WORKFLOW.md")], {
+      cwd: tempDir,
+    });
     expect(exitCode).toBe(0);
   });
 
@@ -199,10 +207,9 @@ describe("CLI validate", () => {
   });
 
   it("validate fails for missing workflow file", async () => {
-    const { exitCode } = await runCli(
-      ["validate", "--workflow", join(tempDir, "NONEXISTENT.md")],
-      { cwd: tempDir },
-    );
+    const { exitCode } = await runCli(["validate", "--workflow", join(tempDir, "NONEXISTENT.md")], {
+      cwd: tempDir,
+    });
     expect(exitCode).not.toBe(0);
   });
 });
@@ -222,14 +229,18 @@ describe("CLI start (daemonize)", () => {
     expect(exitCode).toBe(0);
 
     const parsed = JSON.parse(stdout.trim());
-    // Either started successfully or failed due to missing beads/git — 
+    // Either started successfully or failed due to missing beads/git —
     // the key is that parent returned (didn't block)
     if (parsed.started) {
       expect(parsed.pid).toBeGreaterThan(0);
       expect(parsed.log_file).toBeTruthy();
 
       // Clean up daemon
-      try { process.kill(parsed.pid, "SIGKILL"); } catch { /* ok */ }
+      try {
+        process.kill(parsed.pid, "SIGKILL");
+      } catch {
+        /* ok */
+      }
     }
     // If daemon_failed, that's also fine — it means daemonize worked
     // but the child couldn't start the orchestrator (expected in test env)
@@ -350,10 +361,9 @@ describe("CLI init", () => {
   it("init creates a WORKFLOW.md", async () => {
     const initDir = await mkdtemp(join(tmpdir(), "symphony-init-test-"));
     try {
-      const { exitCode } = await runCli(
-        ["init", "--workflow", join(initDir, "WORKFLOW.md")],
-        { cwd: initDir },
-      );
+      const { exitCode } = await runCli(["init", "--workflow", join(initDir, "WORKFLOW.md")], {
+        cwd: initDir,
+      });
       // May fail because bd isn't configured, but should still create the file
       const wf = Bun.file(join(initDir, "WORKFLOW.md"));
       expect(await wf.exists()).toBe(true);
@@ -470,7 +480,9 @@ describe("findProjectRoot", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolveConfigPaths", () => {
-  function makeConfig(overrides?: Partial<{ workspace_root: string; project_path: string; log_file: string | null }>): ServiceConfig {
+  function makeConfig(
+    overrides?: Partial<{ workspace_root: string; project_path: string; log_file: string | null }>,
+  ): ServiceConfig {
     return {
       tracker: {
         kind: "beads",
@@ -480,9 +492,21 @@ describe("resolveConfigPaths", () => {
       },
       polling: { interval_ms: 30000 },
       workspace: { root: overrides?.workspace_root ?? "./workspaces" },
-      hooks: { after_create: null, before_run: null, after_run: null, before_remove: null, timeout_ms: 60000 },
+      hooks: {
+        after_create: null,
+        before_run: null,
+        after_run: null,
+        before_remove: null,
+        timeout_ms: 60000,
+      },
       agent: { max_concurrent: 1, max_turns: 10, max_retry_backoff_ms: 300000 },
-      runner: { command: "echo noop", model: null, models: null, turn_timeout_ms: 3600000, stall_timeout_ms: 300000 },
+      runner: {
+        command: "echo noop",
+        model: null,
+        models: null,
+        turn_timeout_ms: 3600000,
+        stall_timeout_ms: 300000,
+      },
       log: { file: overrides && "log_file" in overrides ? overrides.log_file! : "./symphony.log" },
     };
   }
@@ -538,10 +562,7 @@ describe("resolveConfigPaths", () => {
       const subdir = join(rootDir, "src", "deep");
       await mkdir(subdir, { recursive: true });
 
-      const { stdout, exitCode } = await runCli(
-        ["validate", "--json"],
-        { cwd: subdir },
-      );
+      const { stdout, exitCode } = await runCli(["validate", "--json"], { cwd: subdir });
       expect(exitCode).toBe(0);
       const parsed = JSON.parse(stdout.trim());
       // workspace.root should be resolved relative to rootDir, not subdir

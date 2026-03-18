@@ -33,11 +33,7 @@ describe("renderPrompt variable substitution", () => {
   });
 
   it("renders dotted issue fields", () => {
-    const result = renderPrompt(
-      "ID={{ issue.identifier }} T={{ issue.title }}",
-      makeIssue(),
-      null,
-    );
+    const result = renderPrompt("ID={{ issue.identifier }} T={{ issue.title }}", makeIssue(), null);
     expect(result).toBe("ID=bd-42 T=Fix the widget");
   });
 
@@ -47,7 +43,11 @@ describe("renderPrompt variable substitution", () => {
   });
 
   it("renders null description as empty string", () => {
-    const result = renderPrompt("Desc=[{{ issue.description }}]", makeIssue({ description: null }), null);
+    const result = renderPrompt(
+      "Desc=[{{ issue.description }}]",
+      makeIssue({ description: null }),
+      null,
+    );
     expect(result).toBe("Desc=[]");
   });
 
@@ -77,7 +77,11 @@ describe("renderPrompt variable substitution", () => {
   });
 
   it("handles spaces around variable names", () => {
-    const result = renderPrompt("{{issue.title}} / {{ issue.title }} / {{  issue.title  }}", makeIssue(), null);
+    const result = renderPrompt(
+      "{{issue.title}} / {{ issue.title }} / {{  issue.title  }}",
+      makeIssue(),
+      null,
+    );
     expect(result).toBe("Fix the widget / Fix the widget / Fix the widget");
   });
 
@@ -98,22 +102,16 @@ describe("renderPrompt variable substitution", () => {
 
 describe("renderPrompt extra variables", () => {
   it("renders extra top-level variables", () => {
-    const result = renderPrompt(
-      "Feedback: {{ review_feedback }}",
-      makeIssue(),
-      null,
-      { review_feedback: "Please fix tests" },
-    );
+    const result = renderPrompt("Feedback: {{ review_feedback }}", makeIssue(), null, {
+      review_feedback: "Please fix tests",
+    });
     expect(result).toBe("Feedback: Please fix tests");
   });
 
   it("renders empty extra as empty string", () => {
-    const result = renderPrompt(
-      "Feedback: [{{ review_feedback }}]",
-      makeIssue(),
-      null,
-      { review_feedback: "" },
-    );
+    const result = renderPrompt("Feedback: [{{ review_feedback }}]", makeIssue(), null, {
+      review_feedback: "",
+    });
     expect(result).toBe("Feedback: []");
   });
 });
@@ -160,20 +158,12 @@ describe("renderPrompt sections", () => {
   });
 
   it("renders section for truthy attempt", () => {
-    const result = renderPrompt(
-      "{{#attempt}}Retry #{{ attempt }}{{/attempt}}",
-      makeIssue(),
-      2,
-    );
+    const result = renderPrompt("{{#attempt}}Retry #{{ attempt }}{{/attempt}}", makeIssue(), 2);
     expect(result).toBe("Retry #2");
   });
 
   it("hides section when attempt is null (rendered as empty string which is falsy)", () => {
-    const result = renderPrompt(
-      "[{{#attempt}}Retry{{/attempt}}]",
-      makeIssue(),
-      null,
-    );
+    const result = renderPrompt("[{{#attempt}}Retry{{/attempt}}]", makeIssue(), null);
     expect(result).toBe("[]");
   });
 });
@@ -226,7 +216,11 @@ describe("renderPrompt inverted sections", () => {
 
 describe("renderPrompt nested access", () => {
   it("renders state field", () => {
-    const result = renderPrompt("State: {{ issue.state }}", makeIssue({ state: "in_progress" }), null);
+    const result = renderPrompt(
+      "State: {{ issue.state }}",
+      makeIssue({ state: "in_progress" }),
+      null,
+    );
     expect(result).toBe("State: in_progress");
   });
 

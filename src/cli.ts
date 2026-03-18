@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 // ---------------------------------------------------------------------------
 // Symphony CLI — Beads Edition
 //
@@ -20,27 +21,27 @@
 //   -v, --version    Show version
 // ---------------------------------------------------------------------------
 
-import { resolve, dirname, join, parse as parsePath } from "path";
-import { existsSync } from "fs";
+import { existsSync } from "node:fs";
+import { dirname, join, parse as parsePath, resolve } from "node:path";
 import { parseWorkflow, validateConfig } from "./config.ts";
-import type { ServiceConfig } from "./types.ts";
-import { BeadsTracker } from "./tracker.ts";
-import { WorkspaceManager } from "./workspace.ts";
-import { Orchestrator } from "./orchestrator.ts";
-import { WorkflowWatcher } from "./watcher.ts";
-import { log, setJsonMode, isJsonMode, setLogFile } from "./log.ts";
-import { PrMonitor } from "./pr-monitor.ts";
 import { runDoctor } from "./doctor.ts";
 import {
   acquireLock,
-  releaseLock,
-  registerInstance,
-  unregisterInstance,
   checkWorkspaceCollisions,
+  isPidAlive,
   listInstances,
   readProjectLock,
-  isPidAlive,
+  registerInstance,
+  releaseLock,
+  unregisterInstance,
 } from "./lock.ts";
+import { isJsonMode, log, setJsonMode, setLogFile } from "./log.ts";
+import { Orchestrator } from "./orchestrator.ts";
+import { PrMonitor } from "./pr-monitor.ts";
+import { BeadsTracker } from "./tracker.ts";
+import type { ServiceConfig } from "./types.ts";
+import { WorkflowWatcher } from "./watcher.ts";
+import { WorkspaceManager } from "./workspace.ts";
 
 const VERSION = "0.1.0";
 
@@ -99,7 +100,7 @@ export function parseArgs(argv: string[]): Args {
       case "--lines":
       case "-n":
         args.lines = parseInt(argv[++i] ?? "50", 10);
-        if (isNaN(args.lines) || args.lines < 1) args.lines = 50;
+        if (Number.isNaN(args.lines) || args.lines < 1) args.lines = 50;
         break;
       case "--all":
         args.all = true;
@@ -160,7 +161,10 @@ async function cmdStart(args: Args): Promise<void> {
  * Daemonize: spawn a child process running `symphony start --foreground`,
  * redirect stdout/stderr to the log file, print PID, and exit.
  */
-async function daemonize(args: Args, config: ReturnType<typeof parseWorkflow>["config"]): Promise<void> {
+async function daemonize(
+  args: Args,
+  config: ReturnType<typeof parseWorkflow>["config"],
+): Promise<void> {
   const projectDir = resolve(dirname(args.workflow));
 
   // Pre-flight: check if already running (before spawning child)
@@ -168,7 +172,9 @@ async function daemonize(args: Args, config: ReturnType<typeof parseWorkflow>["c
   if (existingLock && isPidAlive(existingLock.pid)) {
     const msg = `symphony is already running (PID ${existingLock.pid}). Use symphony stop first.`;
     if (args.json) {
-      console.log(JSON.stringify({ error: "already_running", pid: existingLock.pid, message: msg }));
+      console.log(
+        JSON.stringify({ error: "already_running", pid: existingLock.pid, message: msg }),
+      );
     } else {
       log.error(msg);
     }
@@ -181,8 +187,8 @@ async function daemonize(args: Args, config: ReturnType<typeof parseWorkflow>["c
     : resolve(dirname(args.workflow), "symphony.log");
 
   // Ensure log directory exists
-  const { mkdir: mkdirFs } = await import("fs/promises");
-  const { openSync, closeSync } = await import("fs");
+  const { mkdir: mkdirFs } = await import("node:fs/promises");
+  const { openSync, closeSync } = await import("node:fs");
   await mkdirFs(dirname(logFile), { recursive: true });
 
   // Open log file in append mode so daemon restarts don't truncate history
@@ -213,14 +219,20 @@ async function daemonize(args: Args, config: ReturnType<typeof parseWorkflow>["c
   await Bun.sleep(500);
 
   // Close the log fd in the parent — the child inherited its own copy
-  try { closeSync(logFd); } catch { /* ignore */ }
+  try {
+    closeSync(logFd);
+  } catch {
+    /* ignore */
+  }
 
   // Check if child is still alive
   if (child.exitCode !== null) {
     // Child already exited — something went wrong
     const msg = `daemon failed to start (exit code ${child.exitCode}). Check ${logFile} for details.`;
     if (args.json) {
-      console.log(JSON.stringify({ error: "daemon_failed", exit_code: child.exitCode, log_file: logFile }));
+      console.log(
+        JSON.stringify({ error: "daemon_failed", exit_code: child.exitCode, log_file: logFile }),
+      );
     } else {
       log.error(msg);
     }
@@ -256,9 +268,9 @@ async function cmdStartForeground(
   const workspaceRoot = resolve(config.workspace.root);
 
   // 1. Acquire project-level lock (prevents duplicate instances)
-  let lockPath: string;
+  let _lockPath: string;
   try {
-    lockPath = await acquireLock(projectDir, workspaceRoot, args.workflow);
+    _lockPath = await acquireLock(projectDir, workspaceRoot, args.workflow);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (args.json) {
@@ -353,7 +365,7 @@ async function cmdStartForeground(
 
 async function cmdStatus(args: Args): Promise<void> {
   const workflow = await loadWorkflow(args.workflow);
-  const projectDir = resolve(dirname(args.workflow));
+  const _projectDir = resolve(dirname(args.workflow));
 
   // Try to fetch live orchestrator state (includes token counts)
 
@@ -364,8 +376,12 @@ async function cmdStatus(args: Args): Promise<void> {
     } else {
       const c = liveSnap.counts;
       const t = liveSnap.totals;
-      console.log(`  Running: ${c.running}  Retrying: ${c.retrying}  Completed: ${c.completed}  Claimed: ${c.claimed}`);
-      console.log(`  Tokens:  ${fmtTokens(t.input_tokens)} in / ${fmtTokens(t.output_tokens)} out / ${fmtTokens(t.cache_read_tokens ?? 0)} cache-read / ${fmtTokens(t.cache_write_tokens ?? 0)} cache-write (${fmtTokens(t.total_tokens)} total)`);
+      console.log(
+        `  Running: ${c.running}  Retrying: ${c.retrying}  Completed: ${c.completed}  Claimed: ${c.claimed}`,
+      );
+      console.log(
+        `  Tokens:  ${fmtTokens(t.input_tokens)} in / ${fmtTokens(t.output_tokens)} out / ${fmtTokens(t.cache_read_tokens ?? 0)} cache-read / ${fmtTokens(t.cache_write_tokens ?? 0)} cache-write (${fmtTokens(t.total_tokens)} total)`,
+      );
       if ((t.total_cost ?? 0) > 0) {
         console.log(`  Cost:    $${t.total_cost.toFixed(4)}`);
       }
@@ -375,8 +391,13 @@ async function cmdStatus(args: Args): Promise<void> {
       if (liveSnap.running.length > 0) {
         console.log("  Running agents:");
         for (const r of liveSnap.running) {
-          const tok = r.tokens.total > 0 ? ` [${fmtTokens(r.tokens.total)} tok, $${(r.tokens.cost ?? 0).toFixed(4)}]` : "";
-          console.log(`    ${r.issue_identifier}  [${r.state}]  ${fmtDuration(r.elapsed_ms)}${tok}  ${r.title}`);
+          const tok =
+            r.tokens.total > 0
+              ? ` [${fmtTokens(r.tokens.total)} tok, $${(r.tokens.cost ?? 0).toFixed(4)}]`
+              : "";
+          console.log(
+            `    ${r.issue_identifier}  [${r.state}]  ${fmtDuration(r.elapsed_ms)}${tok}  ${r.title}`,
+          );
         }
         console.log("");
       }
@@ -421,8 +442,8 @@ async function cmdStatus(args: Args): Promise<void> {
 }
 
 function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
 }
 
@@ -556,7 +577,12 @@ async function cmdStop(args: Args): Promise<void> {
 
   if (!lockInfo) {
     if (args.json) {
-      console.log(JSON.stringify({ error: "not_running", message: "No symphony instance running for this project" }));
+      console.log(
+        JSON.stringify({
+          error: "not_running",
+          message: "No symphony instance running for this project",
+        }),
+      );
     } else {
       log.info("no symphony instance running for this project");
     }
@@ -592,7 +618,13 @@ async function cmdStopAll(args: Args): Promise<void> {
     return;
   }
 
-  const results: Array<{ pid: number; project: string; killed: boolean; already_dead: boolean; signal: string }> = [];
+  const results: Array<{
+    pid: number;
+    project: string;
+    killed: boolean;
+    already_dead: boolean;
+    signal: string;
+  }> = [];
 
   for (const inst of instances) {
     const result = await stopProcess(inst);
@@ -613,12 +645,16 @@ async function cmdStopAll(args: Args): Promise<void> {
         log.info(`cleaned up stale instance`, { pid: r.pid, project: r.project });
       }
     }
-    console.log(`\nStopped ${results.filter(r => r.killed).length} instance(s), cleaned ${results.filter(r => r.already_dead).length} stale lock(s).`);
+    console.log(
+      `\nStopped ${results.filter((r) => r.killed).length} instance(s), cleaned ${results.filter((r) => r.already_dead).length} stale lock(s).`,
+    );
   }
 }
 
 /** Send SIGTERM, wait up to 5s for graceful shutdown, then SIGKILL if needed. */
-async function stopProcess(info: { pid: number }): Promise<{ pid: number; killed: boolean; already_dead: boolean; signal: string }> {
+async function stopProcess(info: {
+  pid: number;
+}): Promise<{ pid: number; killed: boolean; already_dead: boolean; signal: string }> {
   const { pid } = info;
 
   if (!isPidAlive(pid)) {
@@ -687,7 +723,12 @@ async function cmdLogs(args: Args): Promise<void> {
 
   if (!logFile) {
     if (args.json) {
-      console.log(JSON.stringify({ error: "no_log_file", message: "no log file configured in WORKFLOW.md (log.file)" }));
+      console.log(
+        JSON.stringify({
+          error: "no_log_file",
+          message: "no log file configured in WORKFLOW.md (log.file)",
+        }),
+      );
     } else {
       log.error("no log file configured in WORKFLOW.md (log.file)");
     }
@@ -731,7 +772,7 @@ async function cmdLogs(args: Args): Promise<void> {
   // Follow mode: watch file for new content and stream it
   if (args.follow) {
     let offset = content.length;
-    const { watch } = await import("fs");
+    const { watch } = await import("node:fs");
 
     const watcher = watch(resolvedPath, async () => {
       try {
@@ -793,7 +834,7 @@ async function cmdTui(): Promise<void> {
 }
 
 async function cmdDashboard(args: Args): Promise<void> {
-  const projectDir = resolve(dirname(args.workflow));
+  const _projectDir = resolve(dirname(args.workflow));
 }
 
 // -- Helpers -----------------------------------------------------------------

@@ -1,12 +1,10 @@
-import { describe, expect, it, beforeEach, afterEach, mock } from "bun:test";
-import { join, resolve } from "path";
-import { mkdtemp, rm } from "fs/promises";
-import { tmpdir } from "os";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import type { ServiceConfig } from "./types.ts";
 
-const execMock = mock(() =>
-  Promise.resolve({ code: 0, stdout: "", stderr: "" }),
-);
+const execMock = mock(() => Promise.resolve({ code: 0, stdout: "", stderr: "" }));
 
 mock.module("./exec.ts", () => ({
   exec: execMock,
@@ -123,7 +121,13 @@ describe("WorkspaceManager hook execution", () => {
   it("runs after_create hook on first ensure", async () => {
     execMock.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
     const config = makeConfig({
-      hooks: { after_create: "git clone $REPO .", before_run: null, after_run: null, before_remove: null, timeout_ms: 60000 },
+      hooks: {
+        after_create: "git clone $REPO .",
+        before_run: null,
+        after_run: null,
+        before_remove: null,
+        timeout_ms: 60000,
+      },
     });
     const wm = new WorkspaceManager(config);
     await wm.ensure("bd-200");
@@ -135,7 +139,13 @@ describe("WorkspaceManager hook execution", () => {
   it("does not run after_create hook on subsequent ensure", async () => {
     execMock.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
     const config = makeConfig({
-      hooks: { after_create: "echo hello", before_run: null, after_run: null, before_remove: null, timeout_ms: 60000 },
+      hooks: {
+        after_create: "echo hello",
+        before_run: null,
+        after_run: null,
+        before_remove: null,
+        timeout_ms: 60000,
+      },
     });
     const wm = new WorkspaceManager(config);
     await wm.ensure("bd-201");
@@ -147,7 +157,13 @@ describe("WorkspaceManager hook execution", () => {
   it("cleans up workspace when after_create hook fails", async () => {
     execMock.mockResolvedValue({ code: 1, stdout: "", stderr: "hook error" });
     const config = makeConfig({
-      hooks: { after_create: "exit 1", before_run: null, after_run: null, before_remove: null, timeout_ms: 60000 },
+      hooks: {
+        after_create: "exit 1",
+        before_run: null,
+        after_run: null,
+        before_remove: null,
+        timeout_ms: 60000,
+      },
     });
     const wm = new WorkspaceManager(config);
     await expect(wm.ensure("bd-202")).rejects.toThrow("after_create hook failed");
@@ -158,7 +174,13 @@ describe("WorkspaceManager hook execution", () => {
   it("runs before_run hook and returns true on success", async () => {
     execMock.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
     const config = makeConfig({
-      hooks: { after_create: null, before_run: "git pull", after_run: null, before_remove: null, timeout_ms: 60000 },
+      hooks: {
+        after_create: null,
+        before_run: "git pull",
+        after_run: null,
+        before_remove: null,
+        timeout_ms: 60000,
+      },
     });
     const wm = new WorkspaceManager(config);
     const result = await wm.beforeRun("/some/path", "bd-300");
@@ -169,7 +191,13 @@ describe("WorkspaceManager hook execution", () => {
   it("returns false when before_run hook fails", async () => {
     execMock.mockResolvedValue({ code: 1, stdout: "", stderr: "error" });
     const config = makeConfig({
-      hooks: { after_create: null, before_run: "false", after_run: null, before_remove: null, timeout_ms: 60000 },
+      hooks: {
+        after_create: null,
+        before_run: "false",
+        after_run: null,
+        before_remove: null,
+        timeout_ms: 60000,
+      },
     });
     const wm = new WorkspaceManager(config);
     const result = await wm.beforeRun("/some/path");
@@ -186,7 +214,13 @@ describe("WorkspaceManager hook execution", () => {
   it("runs after_run hook", async () => {
     execMock.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
     const config = makeConfig({
-      hooks: { after_create: null, before_run: null, after_run: "echo done", before_remove: null, timeout_ms: 60000 },
+      hooks: {
+        after_create: null,
+        before_run: null,
+        after_run: "echo done",
+        before_remove: null,
+        timeout_ms: 60000,
+      },
     });
     const wm = new WorkspaceManager(config);
     await wm.afterRun("/some/path", "bd-400");
@@ -202,7 +236,13 @@ describe("WorkspaceManager hook execution", () => {
   it("runs before_remove hook during remove", async () => {
     execMock.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
     const config = makeConfig({
-      hooks: { after_create: null, before_run: null, after_run: null, before_remove: "echo cleaning", timeout_ms: 60000 },
+      hooks: {
+        after_create: null,
+        before_run: null,
+        after_run: null,
+        before_remove: "echo cleaning",
+        timeout_ms: 60000,
+      },
     });
     const wm = new WorkspaceManager(config);
     await wm.ensure("bd-500");
@@ -222,7 +262,13 @@ describe("WorkspaceManager hook execution", () => {
   it("passes env variables to hooks", async () => {
     execMock.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
     const config = makeConfig({
-      hooks: { after_create: null, before_run: "echo test", after_run: null, before_remove: null, timeout_ms: 60000 },
+      hooks: {
+        after_create: null,
+        before_run: "echo test",
+        after_run: null,
+        before_remove: null,
+        timeout_ms: 60000,
+      },
     });
     const wm = new WorkspaceManager(config);
     await wm.beforeRun("/some/path", "bd-600");

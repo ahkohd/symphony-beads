@@ -2,10 +2,10 @@
 // Doctor — verify all dependencies, config, and runtime state
 // ---------------------------------------------------------------------------
 
-import { resolve } from "path";
-import { readdir } from "fs/promises";
-import { exec } from "./exec.ts";
+import { readdir } from "node:fs/promises";
+import { resolve } from "node:path";
 import { parseWorkflow, validateConfig } from "./config.ts";
+import { exec } from "./exec.ts";
 import { listInstances } from "./lock.ts";
 
 export interface CheckResult {
@@ -66,7 +66,11 @@ async function checkBinary(name: string, args: string[], label: string): Promise
   if (result.code === 127) {
     return { name: label, ok: false, detail: "not found in PATH" };
   }
-  return { name: label, ok: false, detail: `exit ${result.code}: ${result.stderr.trim().slice(0, 100)}` };
+  return {
+    name: label,
+    ok: false,
+    detail: `exit ${result.code}: ${result.stderr.trim().slice(0, 100)}`,
+  };
 }
 
 async function checkDolt(): Promise<CheckResult> {
@@ -102,7 +106,12 @@ async function checkGh(): Promise<CheckResult> {
     return { name: "gh", ok: true, detail: `${version} (${user})`, version };
   }
 
-  return { name: "gh", ok: false, detail: `${version} (not authenticated — run: gh auth login)`, version };
+  return {
+    name: "gh",
+    ok: false,
+    detail: `${version} (not authenticated — run: gh auth login)`,
+    version,
+  };
 }
 
 async function checkWorkflow(path: string): Promise<CheckResult> {
@@ -142,8 +151,8 @@ async function checkBeads(): Promise<CheckResult> {
       return { name: ".beads", ok: true, detail: "connected" };
     }
     const total = issues.length;
-    const open = issues.filter((i: { status: string }) =>
-      i.status === "open" || i.status === "in_progress"
+    const open = issues.filter(
+      (i: { status: string }) => i.status === "open" || i.status === "in_progress",
     ).length;
     const closed = issues.filter((i: { status: string }) => i.status === "closed").length;
     const other = total - open - closed;

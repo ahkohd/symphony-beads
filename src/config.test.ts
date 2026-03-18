@@ -137,7 +137,7 @@ workspace:
 ---
 Prompt.`);
     const home = process.env.HOME || process.env.USERPROFILE || "";
-    expect(wf.config.workspace.root).toBe(home + "/my-workspaces");
+    expect(wf.config.workspace.root).toBe(`${home}/my-workspaces`);
   });
 
   it("expands ~ in log.file", () => {
@@ -147,7 +147,7 @@ log:
 ---
 Prompt.`);
     const home = process.env.HOME || process.env.USERPROFILE || "";
-    expect(wf.config.log.file).toBe(home + "/logs/symphony.log");
+    expect(wf.config.log.file).toBe(`${home}/logs/symphony.log`);
   });
 });
 
@@ -308,7 +308,9 @@ describe("validateConfig max_concurrent_by_state", () => {
         "agent.max_concurrent_by_state": { open: 0 },
       }),
     );
-    expect(errors).toContainEqual(expect.stringContaining("max_concurrent_by_state.open must be >= 1"));
+    expect(errors).toContainEqual(
+      expect.stringContaining("max_concurrent_by_state.open must be >= 1"),
+    );
   });
 
   it("reports errors for multiple invalid state limits", () => {
@@ -322,9 +324,7 @@ describe("validateConfig max_concurrent_by_state", () => {
   });
 
   it("no errors when max_concurrent_by_state is null", () => {
-    const errors = validateConfig(
-      makeConfig({ "agent.max_concurrent_by_state": null }),
-    );
+    const errors = validateConfig(makeConfig({ "agent.max_concurrent_by_state": null }));
     expect(errors).toEqual([]);
   });
 });
