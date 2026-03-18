@@ -401,17 +401,31 @@ export class IssueDetailOverlay {
         return;
       }
 
-      if (key.name === "j") {
+      if (key.name === "j" || key.name === "down") {
         key.preventDefault();
         key.stopPropagation();
         this.scrollDetail(1);
         return;
       }
 
-      if (key.name === "k") {
+      if (key.name === "k" || key.name === "up") {
         key.preventDefault();
         key.stopPropagation();
         this.scrollDetail(-1);
+        return;
+      }
+
+      if (key.name === "pagedown") {
+        key.preventDefault();
+        key.stopPropagation();
+        this.scrollDetail(10);
+        return;
+      }
+
+      if (key.name === "pageup") {
+        key.preventDefault();
+        key.stopPropagation();
+        this.scrollDetail(-10);
       }
     };
 
