@@ -24,6 +24,7 @@
 import { resolve, dirname, join, parse as parsePath } from "path";
 import { existsSync } from "fs";
 import { parseWorkflow, validateConfig } from "./config.ts";
+import type { ServiceConfig } from "./types.ts";
 import { BeadsTracker } from "./tracker.ts";
 import { WorkspaceManager } from "./workspace.ts";
 import { Orchestrator } from "./orchestrator.ts";
@@ -784,7 +785,32 @@ async function loadWorkflow(path: string) {
     process.exit(1);
   }
   const content = await file.text();
-  return parseWorkflow(content);
+  const workflow = parseWorkflow(content);
+  // Resolve relative config paths against the workflow directory so they
+  // remain correct when symphony is invoked from a subdirectory.
+  resolveConfigPaths(workflow.config, resolve(dirname(path)));
+  return workflow;
+}
+
+/**
+ * Resolve relative paths in the parsed config so they are absolute, anchored
+ * to the project root (the directory containing WORKFLOW.md).  This makes all
+ * downstream consumers (tracker, workspace, lock) independent of cwd.
+ */
+export function resolveConfigPaths(config: ServiceConfig, projectRoot: string): void {
+  if (!isAbsoluteOrTilde(config.workspace.root)) {
+    config.workspace.root = resolve(projectRoot, config.workspace.root);
+  }
+  if (!isAbsoluteOrTilde(config.tracker.project_path)) {
+    config.tracker.project_path = resolve(projectRoot, config.tracker.project_path);
+  }
+  if (config.log.file && !isAbsoluteOrTilde(config.log.file)) {
+    config.log.file = resolve(projectRoot, config.log.file);
+  }
+}
+
+function isAbsoluteOrTilde(p: string): boolean {
+  return p.startsWith("/") || p.startsWith("~");
 }
 
 function printUsage(): void {
@@ -962,14 +988,15 @@ async function main(): Promise<void> {
     }
   }
 
-  // Auto-discover project root: if WORKFLOW.md doesn't exist in cwd, walk up
-  if (args.workflow === "WORKFLOW.md") {
-    if (!existsSync(resolve(args.workflow))) {
-      const root = findProjectRoot(process.cwd());
-      const candidate = resolve(root, "WORKFLOW.md");
-      if (existsSync(candidate)) {
-        args.workflow = candidate;
-      }
+  // Auto-discover project root: walk up from cwd to find .git/.jj/WORKFLOW.md.
+  // Resolve the workflow file relative to the found root so symphony can be
+  // invoked from any subdirectory of a project.  Works for both the default
+  // WORKFLOW.md and custom --workflow paths.
+  if (!existsSync(resolve(args.workflow))) {
+    const root = findProjectRoot(process.cwd());
+    const candidate = resolve(root, args.workflow);
+    if (existsSync(candidate)) {
+      args.workflow = candidate;
     }
   }
 
