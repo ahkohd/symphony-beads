@@ -282,3 +282,4 @@
 {"ts":"2026-03-18T04:13:45.929Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
 {"ts":"2026-03-18T04:13:46.106Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
 {"ts":"2026-03-18T04:13:47.755Z","level":"info","msg":"tick","candidates":11,"running":5}
+{"ts":"2026-03-18T04:15:59.613Z","level":"debug","msg":"retry: issue gone, releasing claim","issue_id":"symphony-beads-03o"}
