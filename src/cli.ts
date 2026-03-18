@@ -368,7 +368,7 @@ async function cmdStatus(args: Args): Promise<void> {
   const projectDir = resolve(dirname(args.workflow));
 
   // Try to fetch live orchestrator state (includes token counts)
-  const liveSnap = await fetchLiveSnapshot(projectDir);
+  const liveSnap = await tryFetchLiveSnapshot(projectDir);
 
   if (liveSnap) {
     // Live orchestrator is running — show rich status with tokens
@@ -442,9 +442,118 @@ async function cmdStatus(args: Args): Promise<void> {
   }
 }
 
-async function fetchLiveSnapshot(_projectDir: string): Promise<OrchestratorSnapshot | null> {
-  // Live status transport is optional. When unavailable, status falls back to
-  // querying beads directly.
+async function tryFetchLiveSnapshot(projectDir: string): Promise<OrchestratorSnapshot | null> {
+  const lockInfo = await readProjectLock(projectDir);
+  if (!lockInfo || !isPidAlive(lockInfo.pid)) {
+    return null;
+  }
+
+  const rawLock = lockInfo as unknown as Record<string, unknown>;
+  const hostname =
+    asNonEmptyString(rawLock.api_hostname) ??
+    asNonEmptyString(rawLock.hostname) ??
+    asNonEmptyString(rawLock.server_hostname) ??
+    "127.0.0.1";
+  const port =
+    asPositiveNumber(rawLock.api_port) ??
+    asPositiveNumber(rawLock.port) ??
+    asPositiveNumber(rawLock.server_port) ??
+    4500;
+
+  const endpoints = [
+    `http://${hostname}:${port}/api/v1/state`,
+    `http://${hostname}:${port}/status`,
+  ];
+  for (const endpoint of endpoints) {
+    const snap = await fetchSnapshot(endpoint);
+    if (snap) {
+      return snap;
+    }
+  }
+
+  return null;
+}
+
+async function fetchSnapshot(url: string): Promise<OrchestratorSnapshot | null> {
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(1500) });
+    if (!resp.ok) {
+      return null;
+    }
+
+    const raw = (await resp.json()) as unknown;
+    const direct = asOrchestratorSnapshot(raw);
+    if (direct) {
+      return direct;
+    }
+
+    if (raw && typeof raw === "object") {
+      const record = raw as Record<string, unknown>;
+      const nested =
+        asOrchestratorSnapshot(record.state) ?? asOrchestratorSnapshot(record.snapshot);
+      if (nested) {
+        return nested;
+      }
+    }
+  } catch {
+    // ignore connection/parsing errors and fall back to tracker status
+  }
+
+  return null;
+}
+
+function asOrchestratorSnapshot(value: unknown): OrchestratorSnapshot | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const snap = value as Partial<OrchestratorSnapshot>;
+  const counts = snap.counts;
+  const totals = snap.totals;
+
+  if (!counts || !totals || !Array.isArray(snap.running) || !Array.isArray(snap.retrying)) {
+    return null;
+  }
+
+  if (
+    typeof snap.generated_at !== "string" ||
+    typeof counts.running !== "number" ||
+    typeof counts.retrying !== "number" ||
+    typeof counts.completed !== "number" ||
+    typeof counts.claimed !== "number" ||
+    typeof totals.input_tokens !== "number" ||
+    typeof totals.output_tokens !== "number" ||
+    typeof totals.cache_read_tokens !== "number" ||
+    typeof totals.cache_write_tokens !== "number" ||
+    typeof totals.total_tokens !== "number" ||
+    typeof totals.total_cost !== "number" ||
+    typeof totals.seconds_running !== "number"
+  ) {
+    return null;
+  }
+
+  return snap as OrchestratorSnapshot;
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim() === "") {
+    return null;
+  }
+  return value;
+}
+
+function asPositiveNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
   return null;
 }
 
