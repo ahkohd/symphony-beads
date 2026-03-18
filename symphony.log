@@ -3,3 +3,12 @@
 {"ts":"2026-03-18T02:54:30.728Z","level":"info","msg":"dispatching","issue_id":"symphony-beads-7aa","title":"Write a hello world script","attempt":0}
 {"ts":"2026-03-18T02:54:30.728Z","level":"info","msg":"dispatched","count":1}
 {"ts":"2026-03-18T02:54:30.729Z","level":"debug","msg":"spawning agent","issueId":"symphony-beads-7aa","command":"pi -p --no-session","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-7aa"}
+{"ts":"2026-03-18T03:18:12.177Z","level":"info","msg":"removing stale lock file","pid":1150399,"lock":"/home/var/symphony-beads/.symphony.lock"}
+{"ts":"2026-03-18T03:18:12.179Z","level":"info","msg":"watching workflow file for changes","path":"/home/var/symphony-beads/WORKFLOW.md","mode":"fs.watch"}
+{"ts":"2026-03-18T03:18:12.179Z","level":"info","msg":"service started","poll_ms":30000,"max_concurrent":5,"runner":"pi -p --no-session"}
+{"ts":"2026-03-18T03:18:12.218Z","level":"info","msg":"tick","candidates":1,"running":0}
+{"ts":"2026-03-18T03:18:12.218Z","level":"info","msg":"dispatching","issue_id":"symphony-beads-p00","title":"Add a LICENSE file with MIT license","attempt":0}
+{"ts":"2026-03-18T03:18:12.218Z","level":"info","msg":"dispatched","count":1}
+{"ts":"2026-03-18T03:18:12.219Z","level":"debug","msg":"running hook","hook":"after_create","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-p00"}
+{"ts":"2026-03-18T03:18:12.307Z","level":"debug","msg":"running hook","hook":"before_run","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-p00"}
+{"ts":"2026-03-18T03:18:13.054Z","level":"debug","msg":"spawning agent","issueId":"symphony-beads-p00","command":"pi -p --no-session","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-p00"}
