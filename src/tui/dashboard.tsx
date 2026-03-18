@@ -52,6 +52,7 @@ interface ReviewItem {
 }
 
 interface StaticCounts {
+  deferred: number;
   open: number;
   in_progress: number;
   review: number;
@@ -133,7 +134,7 @@ async function fetchReviewIssues(): Promise<ReviewItem[]> {
 
 /** Fetch static issue counts from bd for static (no orchestrator) mode. */
 async function fetchStaticCounts(): Promise<StaticCounts> {
-  const empty: StaticCounts = { open: 0, in_progress: 0, review: 0, closed: 0 };
+  const empty: StaticCounts = { deferred: 0, open: 0, in_progress: 0, review: 0, closed: 0 };
   try {
     const result = await exec(["bd", "list", "--all", "--json"], {
       cwd: process.cwd(),
@@ -145,7 +146,8 @@ async function fetchStaticCounts(): Promise<StaticCounts> {
     const counts: StaticCounts = { ...empty };
     for (const issue of parsed) {
       const status = String(issue.status ?? "open");
-      if (status === "open") counts.open++;
+      if (status === "deferred") counts.deferred++;
+      else if (status === "open") counts.open++;
       else if (status === "in_progress") counts.in_progress++;
       else if (status === "review") counts.review++;
       else if (status === "closed") counts.closed++;
@@ -434,7 +436,7 @@ function StaticSummary({
   counts: StaticCounts;
   selectedId: string | null;
 }) {
-  const total = counts.open + counts.in_progress + counts.review + counts.closed;
+  const total = counts.deferred + counts.open + counts.in_progress + counts.review + counts.closed;
   return (
     <box style={{ flexDirection: "column", flexGrow: 1 }}>
       <box style={{ paddingLeft: 1, height: 2, flexDirection: "column" }}>
@@ -449,6 +451,8 @@ function StaticSummary({
       <SectionTitle title="Issue Summary" color={COLORS.accent} count={total} />
       <box style={{ paddingLeft: 2, height: 1 }}>
         <text>
+          <span fg={COLORS.gray}>◇ {counts.deferred} backlog</span>
+          <span fg={COLORS.textDim}> │ </span>
           <span fg={COLORS.green}>● {counts.open} open</span>
           <span fg={COLORS.textDim}> │ </span>
           <span fg={COLORS.blue}>▶ {counts.in_progress} in progress</span>
@@ -499,6 +503,7 @@ function DashboardApp({ client, renderer, refreshMs = 2000 }: DashboardProps) {
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [source, setSource] = useState<"live" | "static" | "offline">("offline");
   const [staticCounts, setStaticCounts] = useState<StaticCounts>({
+    deferred: 0,
     open: 0,
     in_progress: 0,
     review: 0,

@@ -160,3 +160,15 @@ For more details, see README.md and docs/QUICKSTART.md.
 - Do not cd to parent directories or access ../
 - All file paths must be relative to the current working directory.
 - Use git to commit and push your changes when done.
+
+# Symphony Agent Guidelines
+- Work ONLY within this directory. Do not read or write files outside of it.
+- Do not cd to parent directories or access ../
+- All file paths must be relative to the current working directory.
+- Use git to commit and push your changes when done.
+
+# Symphony Agent Guidelines
+- Work ONLY within this directory. Do not read or write files outside of it.
+- Do not cd to parent directories or access ../
+- All file paths must be relative to the current working directory.
+- Use git to commit and push your changes when done.

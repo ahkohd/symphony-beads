@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // TUI Kanban Board — issue management view using OpenTUI React
 //
-// Four-column kanban layout (Open, In Progress, Review, Closed).
+// Five-column kanban layout (Backlog, Open, In Progress, Review, Closed).
 // Arrow keys to navigate cards, Enter for details, m/M to move status,
 // n to create new issue, d to close/delete.
 //
@@ -49,6 +49,7 @@ interface CursorPos {
 // -- Constants ---------------------------------------------------------------
 
 const COLUMNS = [
+  { key: "deferred", label: "Backlog", color: "#565f89" },
   { key: "open", label: "Open", color: "#9ece6a" },
   { key: "in_progress", label: "In Progress", color: "#7dcfff" },
   { key: "review", label: "Review", color: "#e0af68" },
@@ -389,20 +390,60 @@ function KanbanColumn({
   issues,
   selectedRow,
   isActiveColumn,
+  collapsed = false,
+  narrow = false,
 }: {
   label: string;
   color: string;
   issues: Issue[];
   selectedRow: number;
   isActiveColumn: boolean;
+  collapsed?: boolean;
+  narrow?: boolean;
 }) {
   const headerBorderColor = isActiveColumn ? color : COLORS.border;
+
+  // When collapsed, show only a minimal vertical strip with the label and count
+  if (collapsed) {
+    return (
+      <box
+        style={{
+          flexDirection: "column",
+          width: 14,
+          flexGrow: 0,
+          flexShrink: 0,
+          borderStyle: "single",
+          border: true,
+          borderColor: headerBorderColor,
+          backgroundColor: COLORS.bg,
+        }}
+      >
+        <box
+          style={{
+            height: 1,
+            paddingLeft: 1,
+            backgroundColor: isActiveColumn ? COLORS.surface : COLORS.bg,
+          }}
+        >
+          <text>
+            <span fg={color}>
+              <strong>{label}</strong>
+            </span>
+            <span fg={COLORS.textDim}> ({issues.length})</span>
+          </text>
+        </box>
+        <box style={{ paddingLeft: 1, height: 1 }}>
+          <text fg={COLORS.textDim}>▸ [b]</text>
+        </box>
+      </box>
+    );
+  }
 
   return (
     <box
       style={{
         flexDirection: "column",
-        flexGrow: 1,
+        flexGrow: narrow ? 0.6 : 1,
         flexBasis: 0,
         borderStyle: "single",
         border: true,
@@ -481,6 +522,8 @@ function Footer({ statusMsg, isLive }: { statusMsg: string; isLive: boolean }) {
         <span fg={COLORS.text}> new </span>
         <span fg={COLORS.textDim}>d</span>
         <span fg={COLORS.text}> close </span>
+        <span fg={COLORS.textDim}>b</span>
+        <span fg={COLORS.text}> backlog </span>
         <span fg={COLORS.textDim}>r</span>
         <span fg={COLORS.text}>{isLive ? " poll " : " refresh "}</span>
         <span fg={COLORS.textDim}>q</span>
@@ -503,6 +546,7 @@ function KanbanApp({
   const [statusMsg, setStatusMsg] = useState("loading…");
   const [overlayActive, setOverlayActive] = useState(false);
   const [dataSource, setDataSource] = useState<DataSource>("static");
+  const [backlogCollapsed, setBacklogCollapsed] = useState(true);
   const [liveStats, setLiveStats] = useState<{
     running: number;
     retrying: number;
@@ -734,6 +778,10 @@ function KanbanApp({
       case "d":
         handleClose();
         break;
+
+      case "b":
+        setBacklogCollapsed((prev) => !prev);
+        break;
     }
   });
 
@@ -764,6 +812,7 @@ function KanbanApp({
       >
         {COLUMNS.map((col, colIdx) => {
           const items = buckets.get(col.key) ?? [];
+          const isBacklog = col.key === "deferred";
           return (
             <KanbanColumn
               key={col.key}
@@ -772,6 +821,8 @@ function KanbanApp({
               issues={items}
               selectedRow={cursor.row}
               isActiveColumn={cursor.col === colIdx}
+              collapsed={isBacklog && backlogCollapsed}
+              narrow={isBacklog}
             />
           );
         })}
