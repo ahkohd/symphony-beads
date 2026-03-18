@@ -7,7 +7,7 @@ import type { Issue } from "./types.ts";
 // ---------------------------------------------------------------------------
 
 function makeIssue(overrides: Partial<Issue> = {}): Issue {
-  return {
+  const merged = {
     id: "bd-42",
     identifier: "bd-42",
     title: "Fix the widget",
@@ -16,9 +16,19 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     state: "open",
     labels: ["bug", "urgent"],
     blocked_by: [],
+    issue_type: null,
+    metadata: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-02T00:00:00Z",
     ...overrides,
+  };
+
+  return {
+    ...merged,
+    issue_type: merged.issue_type ?? null,
+    metadata: merged.metadata ?? null,
+    created_at: merged.created_at ?? null,
+    updated_at: merged.updated_at ?? null,
   };
 }
 

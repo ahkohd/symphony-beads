@@ -36,7 +36,7 @@ import {
   unregisterInstance,
 } from "./lock.ts";
 import { isJsonMode, log, setJsonMode, setLogFile } from "./log.ts";
-import { Orchestrator } from "./orchestrator.ts";
+import { Orchestrator, type OrchestratorSnapshot } from "./orchestrator.ts";
 import { PrMonitor } from "./pr-monitor.ts";
 import { BeadsTracker } from "./tracker.ts";
 import type { ServiceConfig } from "./types.ts";
@@ -365,9 +365,9 @@ async function cmdStartForeground(
 
 async function cmdStatus(args: Args): Promise<void> {
   const workflow = await loadWorkflow(args.workflow);
-  const _projectDir = resolve(dirname(args.workflow));
 
   // Try to fetch live orchestrator state (includes token counts)
+  const liveSnap = await fetchLiveSnapshot(args.workflow);
 
   if (liveSnap) {
     // Live orchestrator is running — show rich status with tokens
@@ -438,6 +438,42 @@ async function cmdStatus(args: Args): Promise<void> {
     if (output.issues.length === 0) {
       console.log("  (no active issues)");
     }
+  }
+}
+
+async function fetchLiveSnapshot(workflowPath: string): Promise<OrchestratorSnapshot | null> {
+  const projectDir = resolve(dirname(workflowPath));
+  const lockInfo = await readProjectLock(projectDir);
+  if (!lockInfo || !isPidAlive(lockInfo.pid)) {
+    return null;
+  }
+
+  const lockRecord = lockInfo as unknown as Record<string, unknown>;
+  const port =
+    typeof lockRecord.server_port === "number"
+      ? lockRecord.server_port
+      : typeof lockRecord.port === "number"
+        ? lockRecord.port
+        : null;
+  if (port === null) {
+    return null;
+  }
+
+  const hostname =
+    typeof lockRecord.server_hostname === "string"
+      ? lockRecord.server_hostname
+      : typeof lockRecord.hostname === "string"
+        ? lockRecord.hostname
+        : "127.0.0.1";
+
+  try {
+    const res = await fetch(`http://${hostname}:${port}/api/v1/status`);
+    if (!res.ok) return null;
+    const json = (await res.json()) as unknown;
+    if (!json || typeof json !== "object") return null;
+    return json as OrchestratorSnapshot;
+  } catch {
+    return null;
   }
 }
 

@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ServiceConfig } from "./types.ts";
 
-const execMock = mock(() => Promise.resolve({ code: 0, stdout: "", stderr: "" }));
+const execMock = mock((..._args: unknown[]) =>
+  Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+);
 
 mock.module("./exec.ts", () => ({
   exec: execMock,
@@ -23,7 +25,7 @@ function makeConfig(overrides: Partial<ServiceConfig> = {}): ServiceConfig {
       terminal_states: ["closed", "cancelled", "duplicate"],
     },
     polling: { interval_ms: 30000 },
-    workspace: { root: tempRoot },
+    workspace: { root: tempRoot, repo: null, remote: "origin" },
     hooks: {
       after_create: null,
       before_run: null,
@@ -31,8 +33,19 @@ function makeConfig(overrides: Partial<ServiceConfig> = {}): ServiceConfig {
       before_remove: null,
       timeout_ms: 60000,
     },
-    agent: { max_concurrent: 5, max_turns: 20, max_retry_backoff_ms: 300000 },
-    runner: { command: "pi -p", model: null, turn_timeout_ms: 3600000, stall_timeout_ms: 300000 },
+    agent: {
+      max_concurrent: 5,
+      max_concurrent_by_state: null,
+      max_turns: 20,
+      max_retry_backoff_ms: 300000,
+    },
+    runner: {
+      command: "pi -p",
+      model: null,
+      models: null,
+      turn_timeout_ms: 3600000,
+      stall_timeout_ms: 300000,
+    },
     log: { file: null },
     ...overrides,
   };

@@ -22,10 +22,12 @@ import {
   type CliRenderer,
   createCliRenderer,
   Input,
+  InputRenderable,
   type KeyEvent,
   type Renderable,
   Select,
   type SelectOption,
+  SelectRenderable,
   Text,
 } from "@opentui/core";
 
@@ -87,10 +89,10 @@ export class NewIssueDialog {
   private typeIndex = 2; // default "task"
 
   // Renderable references (for focus management)
-  private titleInput: Renderable | null = null;
-  private descriptionInput: Renderable | null = null;
-  private prioritySelect: Renderable | null = null;
-  private typeSelect: Renderable | null = null;
+  private titleInput: InputRenderable | null = null;
+  private descriptionInput: InputRenderable | null = null;
+  private prioritySelect: SelectRenderable | null = null;
+  private typeSelect: SelectRenderable | null = null;
 
   // Status message for validation errors / creation feedback
   private statusMessage = "";
@@ -361,10 +363,10 @@ export class NewIssueDialog {
     this.overlayRoot = this.renderer.root.getRenderable("new-issue-dialog-overlay") ?? null;
 
     // Grab references to the input/select renderables
-    this.titleInput = this.findRenderable("new-issue-title");
-    this.descriptionInput = this.findRenderable("new-issue-description");
-    this.prioritySelect = this.findRenderable("new-issue-priority");
-    this.typeSelect = this.findRenderable("new-issue-type");
+    this.titleInput = this.findInput("new-issue-title");
+    this.descriptionInput = this.findInput("new-issue-description");
+    this.prioritySelect = this.findSelect("new-issue-priority");
+    this.typeSelect = this.findSelect("new-issue-type");
 
     // Set up event listeners for input changes
     this.setupInputListeners();
@@ -380,43 +382,36 @@ export class NewIssueDialog {
 
   private findRenderable(id: string): Renderable | null {
     if (!this.overlayRoot) return null;
-    // Walk the tree to find the renderable by id
-    return this.deepFind(this.overlayRoot, id);
+    return this.overlayRoot.findDescendantById(id) ?? this.overlayRoot.getRenderable(id) ?? null;
   }
 
-  private deepFind(node: Renderable, id: string): Renderable | null {
-    if (node.id === id) return node;
-    // Check children
-    const children = (node as Record<string, unknown>).children as Renderable[] | undefined;
-    if (children && Array.isArray(children)) {
-      for (const child of children) {
-        const found = this.deepFind(child, id);
-        if (found) return found;
-      }
-    }
-    // Also try getRenderable
-    const found = node.getRenderable?.(id) ?? null;
-    if (found) return found;
-    return null;
+  private findInput(id: string): InputRenderable | null {
+    const renderable = this.findRenderable(id);
+    return renderable instanceof InputRenderable ? renderable : null;
+  }
+
+  private findSelect(id: string): SelectRenderable | null {
+    const renderable = this.findRenderable(id);
+    return renderable instanceof SelectRenderable ? renderable : null;
   }
 
   private setupInputListeners(): void {
     // Listen for input changes on the title field
     if (this.titleInput) {
       this.titleInput.on("input", () => {
-        this.titleValue = (this.titleInput as Record<string, unknown>)?.value ?? "";
+        this.titleValue = this.titleInput?.value ?? "";
       });
       this.titleInput.on("change", () => {
-        this.titleValue = (this.titleInput as Record<string, unknown>)?.value ?? "";
+        this.titleValue = this.titleInput?.value ?? "";
       });
     }
     // Listen for input changes on the description field
     if (this.descriptionInput) {
       this.descriptionInput.on("input", () => {
-        this.descriptionValue = (this.descriptionInput as Record<string, unknown>)?.value ?? "";
+        this.descriptionValue = this.descriptionInput?.value ?? "";
       });
       this.descriptionInput.on("change", () => {
-        this.descriptionValue = (this.descriptionInput as Record<string, unknown>)?.value ?? "";
+        this.descriptionValue = this.descriptionInput?.value ?? "";
       });
     }
     // Listen for selection changes on priority
@@ -465,20 +460,19 @@ export class NewIssueDialog {
 
   private captureValues(): void {
     if (this.titleInput) {
-      this.titleValue = (this.titleInput as Record<string, unknown>)?.value ?? this.titleValue;
+      this.titleValue = this.titleInput.value;
     }
+
     if (this.descriptionInput) {
-      this.descriptionValue =
-        (this.descriptionInput as Record<string, unknown>)?.value ?? this.descriptionValue;
+      this.descriptionValue = this.descriptionInput.value;
     }
+
     if (this.prioritySelect) {
-      this.priorityIndex =
-        (this.prioritySelect as Record<string, unknown>)?.getSelectedIndex?.() ??
-        this.priorityIndex;
+      this.priorityIndex = this.prioritySelect.getSelectedIndex();
     }
+
     if (this.typeSelect) {
-      this.typeIndex =
-        (this.typeSelect as Record<string, unknown>)?.getSelectedIndex?.() ?? this.typeIndex;
+      this.typeIndex = this.typeSelect.getSelectedIndex();
     }
   }
 
