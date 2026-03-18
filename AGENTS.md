@@ -2,7 +2,7 @@
 
 ## Before Committing
 
-Always run these checks before `git add` and `git commit`:
+Run these before every commit:
 
 ```bash
 bun run fmt        # format
