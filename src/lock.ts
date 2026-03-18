@@ -60,11 +60,6 @@ export async function acquireLock(
   return lockPath;
 }
 
-/**
- * Update the lock file with HTTP server info (port + hostname).
- * Called after the HTTP dashboard starts so the TUI can discover it.
- */
-
 /** Release the project lock file. Safe to call even if lock doesn't exist. */
 export async function releaseLock(projectDir: string): Promise<void> {
   const lockPath = resolve(projectDir, LOCK_FILENAME);

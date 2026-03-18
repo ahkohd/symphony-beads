@@ -20,14 +20,7 @@ import {
   Text,
 } from "@opentui/core";
 
-import {
-  type AgentSessionInfo,
-  fetchAgentSession,
-  fetchIssueComments,
-  fetchIssueDetail,
-  type IssueComment,
-  type IssueDetail,
-} from "./issue-data.ts";
+import { fetchIssueComments, fetchIssueDetail, type IssueComment, type IssueDetail } from "./issue-data.ts";
 
 // -- Colors ------------------------------------------------------------------
 
@@ -93,17 +86,15 @@ export class IssueDetailOverlay {
   /**
    * Show the detail overlay for the given issue ID.
    * @param issueId — The issue identifier to display.
-   * @param apiBase — Optional orchestrator API base URL for live session data.
    */
-  async show(issueId: string, apiBase?: string): Promise<void> {
+  async show(issueId: string): Promise<void> {
     // Close any existing overlay first
     this.close();
 
     // Fetch data in parallel
-    const [issue, comments, session] = await Promise.all([
+    const [issue, comments] = await Promise.all([
       fetchIssueDetail(issueId),
       fetchIssueComments(issueId),
-      fetchAgentSession(issueId, apiBase),
     ]);
 
     if (!issue) {
@@ -111,7 +102,7 @@ export class IssueDetailOverlay {
       return;
     }
 
-    this.renderDetail(issue, comments, session);
+    this.renderDetail(issue, comments);
   }
 
   /** Close the overlay and clean up. */
@@ -170,11 +161,7 @@ export class IssueDetailOverlay {
     this.installKeyHandler();
   }
 
-  private renderDetail(
-    issue: IssueDetail,
-    comments: IssueComment[],
-    session: AgentSessionInfo | null,
-  ): void {
+  private renderDetail(issue: IssueDetail, comments: IssueComment[]): void {
     const children: VChild[] = [];
 
     // -- Header: ID + Title --
@@ -196,12 +183,6 @@ export class IssueDetailOverlay {
     if (issue.pr_url) {
       children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
       children.push(this.buildPrLink(issue.pr_url));
-    }
-
-    // -- Agent Session --
-    if (session) {
-      children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
-      children.push(this.buildSessionInfo(session));
     }
 
     // -- Comments --
@@ -337,44 +318,6 @@ export class IssueDetailOverlay {
     );
   }
 
-  private buildSessionInfo(session: AgentSessionInfo): VChild {
-    const elapsed = formatDuration(session.elapsed_ms);
-    return Box(
-      { flexDirection: "column", gap: 0, paddingLeft: 1 },
-      Text({ content: " Agent Session", fg: COLORS.green, attributes: 1 }),
-      Box(
-        { flexDirection: "row", gap: 2, paddingLeft: 1 },
-        Text({ content: `Elapsed: ${elapsed}`, fg: COLORS.text }),
-        Text({ content: `Attempt: ${session.attempt}`, fg: COLORS.text }),
-      ),
-      session.last_event
-        ? Box(
-            { flexDirection: "row", gap: 1, paddingLeft: 1 },
-            Text({ content: "Last event:", fg: COLORS.textDim }),
-            Text({ content: session.last_event, fg: COLORS.yellow }),
-          )
-        : null,
-      session.last_message
-        ? Box(
-            { paddingLeft: 1, paddingRight: 1 },
-            Text({
-              content: session.last_message,
-              fg: COLORS.textDim,
-              wrapMode: "word",
-              truncate: true,
-            }),
-          )
-        : null,
-      Box(
-        { flexDirection: "row", gap: 2, paddingLeft: 1 },
-        Text({
-          content: `Tokens: ${fmtNum(session.tokens.input)}\u2191 ${fmtNum(session.tokens.output)}\u2193`,
-          fg: COLORS.textDim,
-        }),
-      ),
-    );
-  }
-
   private buildComment(comment: IssueComment): VChild {
     const timestamp = comment.created_at ? formatTimestamp(comment.created_at) : "";
 
@@ -423,15 +366,6 @@ export class IssueDetailOverlay {
 
 // -- Utility functions -------------------------------------------------------
 
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
-}
-
 function formatTimestamp(iso: string): string {
   try {
     const date = new Date(iso);
@@ -453,12 +387,6 @@ function formatTimestamp(iso: string): string {
   } catch {
     return iso;
   }
-}
-
-function fmtNum(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
 }
 
 // -- Standalone entry point --------------------------------------------------

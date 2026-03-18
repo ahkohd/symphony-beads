@@ -17,7 +17,7 @@ mock.module("../exec.ts", () => ({
 }));
 
 // Import AFTER mocking so the mock is in place
-const { fetchIssueDetail, fetchIssueComments, fetchAgentSession } = await import("./issue-data.ts");
+const { fetchIssueDetail, fetchIssueComments } = await import("./issue-data.ts");
 
 beforeEach(() => {
   mockExec.mockReset();
@@ -295,19 +295,3 @@ describe("fetchIssueComments", () => {
   });
 });
 
-// -- fetchAgentSession -------------------------------------------------------
-
-describe("fetchAgentSession", () => {
-  // We can't easily mock fetch in Bun tests without a library,
-  // so we test the error/offline path (fetch to nonexistent server)
-  test("returns null when API is unreachable", async () => {
-    const result = await fetchAgentSession("test-123", "http://127.0.0.1:19999");
-    expect(result).toBeNull();
-  });
-
-  test("returns null with default API base when offline", async () => {
-    // Default base (4500) is likely not running in tests
-    const result = await fetchAgentSession("test-123");
-    expect(result).toBeNull();
-  });
-});
