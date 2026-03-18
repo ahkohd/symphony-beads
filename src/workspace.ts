@@ -10,10 +10,12 @@ import { log } from "./log.ts";
 
 export class WorkspaceManager {
   private root: string;
+  private projectPath: string;
   private hooks: ServiceConfig["hooks"];
 
   constructor(config: ServiceConfig) {
     this.root = resolve(config.workspace.root);
+    this.projectPath = resolve(config.tracker.project_path);
     this.hooks = config.hooks;
   }
 
@@ -23,7 +25,10 @@ export class WorkspaceManager {
     const path = join(this.root, key);
     this.assertInRoot(path);
 
-    const hookEnv = { SYMPHONY_ISSUE_ID: identifier };
+    const hookEnv = {
+      SYMPHONY_ISSUE_ID: identifier,
+      SYMPHONY_PROJECT_PATH: this.projectPath,
+    };
 
     let created = false;
     try {
@@ -74,14 +79,18 @@ export class WorkspaceManager {
   /** Run before_run hook. Returns false on failure. */
   async beforeRun(path: string, identifier?: string): Promise<boolean> {
     if (!this.hooks.before_run) return true;
-    const env = identifier ? { SYMPHONY_ISSUE_ID: identifier } : undefined;
+    const env = identifier
+      ? { SYMPHONY_ISSUE_ID: identifier, SYMPHONY_PROJECT_PATH: this.projectPath }
+      : undefined;
     return this.runHook("before_run", path, this.hooks.before_run, env);
   }
 
   /** Run after_run hook. Failure is logged and ignored. */
   async afterRun(path: string, identifier?: string): Promise<void> {
     if (!this.hooks.after_run) return;
-    const env = identifier ? { SYMPHONY_ISSUE_ID: identifier } : undefined;
+    const env = identifier
+      ? { SYMPHONY_ISSUE_ID: identifier, SYMPHONY_PROJECT_PATH: this.projectPath }
+      : undefined;
     await this.runHook("after_run", path, this.hooks.after_run, env);
   }
 

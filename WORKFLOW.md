@@ -16,6 +16,7 @@ polling:
 hooks:
   after_create: |
     git clone git@github.com:ahkohd/symphony-beads.git . 2>/dev/null || true
+    rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
   before_run: |
     git fetch origin 2>/dev/null || true
     if git rev-parse --verify origin/issue/$SYMPHONY_ISSUE_ID >/dev/null 2>&1; then

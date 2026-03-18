@@ -424,9 +424,14 @@ polling:
 hooks:
   after_create: |
     git clone $REPO_URL . 2>/dev/null || true
+    rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
   before_run: |
     git fetch origin 2>/dev/null || true
-    git checkout -B issue/$SYMPHONY_ISSUE_ID origin/HEAD 2>/dev/null || git checkout -B issue/$SYMPHONY_ISSUE_ID
+    if git rev-parse --verify origin/issue/$SYMPHONY_ISSUE_ID >/dev/null 2>&1; then
+      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/issue/$SYMPHONY_ISSUE_ID
+    else
+      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/HEAD 2>/dev/null || git checkout -B issue/$SYMPHONY_ISSUE_ID
+    fi
 log:
   file: ./symphony.log
 ---
