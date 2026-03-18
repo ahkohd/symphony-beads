@@ -130,6 +130,15 @@ async function closeIssue(issueId: string): Promise<boolean> {
 
 type ColumnSortMode = "default" | "priority";
 
+function makeColumnScrollboxId(columnKey: string): string {
+  return `kanban-col-scroll-${columnKey}`;
+}
+
+function makeIssueCardId(issueId: string): string {
+  const safeId = issueId.replace(/[^a-zA-Z0-9_-]/g, "-");
+  return `kanban-card-${safeId}`;
+}
+
 function truncStr(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
@@ -263,10 +272,12 @@ function IssueCard({
   issue,
   isSelected,
   onSelect,
+  cardId,
 }: {
   issue: Issue;
   isSelected: boolean;
   onSelect: () => void;
+  cardId: string;
 }) {
   const borderColor = isSelected ? COLORS.borderHighlight : COLORS.border;
   const bgColor = isSelected ? COLORS.surface : COLORS.bg;
@@ -275,6 +286,7 @@ function IssueCard({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: OpenTUI box supports mouse handlers.
     <box
+      id={cardId}
       onMouseDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
@@ -319,6 +331,7 @@ function KanbanColumn({
   issues,
   selectedRow,
   isActiveColumn,
+  columnKey,
   onSelectColumn,
   onSelectCard,
 }: {
@@ -327,10 +340,12 @@ function KanbanColumn({
   issues: Issue[];
   selectedRow: number;
   isActiveColumn: boolean;
+  columnKey: string;
   onSelectColumn: () => void;
   onSelectCard: (row: number) => void;
 }) {
   const headerBorderColor = isActiveColumn ? color : COLORS.border;
+  const scrollboxId = makeColumnScrollboxId(columnKey);
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: OpenTUI box supports mouse handlers.
@@ -368,6 +383,7 @@ function KanbanColumn({
 
       {/* Cards */}
       <scrollbox
+        id={scrollboxId}
         style={{
           rootOptions: { flexGrow: 1, backgroundColor: COLORS.bg },
           contentOptions: {
@@ -388,6 +404,7 @@ function KanbanColumn({
               issue={issue}
               isSelected={isActiveColumn && idx === selectedRow}
               onSelect={() => onSelectCard(idx)}
+              cardId={makeIssueCardId(issue.id)}
             />
           ))
         )}
@@ -470,6 +487,24 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
   useEffect(() => {
     setCursor((prev) => clampCursor(prev, buckets));
   }, [buckets]);
+
+  // Keep selected card in view when navigating with keyboard/mouse.
+  useEffect(() => {
+    const col = COLUMNS[cursor.col];
+    if (!col) return;
+
+    const items = buckets.get(col.key) ?? [];
+    const selectedIssue = items[cursor.row];
+    if (!selectedIssue) return;
+
+    const scrollbox = renderer.root.getRenderable(makeColumnScrollboxId(col.key));
+    if (!scrollbox) return;
+
+    const maybeScrollbox = scrollbox as unknown as {
+      scrollChildIntoView?: (childId: string) => void;
+    };
+    maybeScrollbox.scrollChildIntoView?.(makeIssueCardId(selectedIssue.id));
+  }, [buckets, cursor, renderer]);
 
   // -- Helpers ---------------------------------------------------------------
 
@@ -803,6 +838,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
               issues={items}
               selectedRow={cursor.row}
               isActiveColumn={cursor.col === colIdx}
+              columnKey={col.key}
               onSelectColumn={() => handleSelectColumn(colIdx)}
               onSelectCard={(row) => handleSelectCard(colIdx, row)}
             />
