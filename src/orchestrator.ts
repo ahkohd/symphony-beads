@@ -95,6 +95,12 @@ export class Orchestrator {
     }
   }
 
+  /** Trigger an immediate poll+reconcile cycle (used by the HTTP API). */
+  async triggerTick(): Promise<void> {
+    log.info("manual tick triggered via API");
+    await this.tick();
+  }
+
   /** Snapshot of current state (for `status` subcommand and JSON API). */
   snapshot(): OrchestratorSnapshot {
     const now = Date.now();

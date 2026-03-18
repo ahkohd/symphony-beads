@@ -201,8 +201,14 @@ async function readLockFile(path: string): Promise<LockInfo | null> {
   }
 }
 
+/** Read the project lock file. Returns null if it doesn't exist or is invalid. */
+export async function readProjectLock(projectDir: string): Promise<LockInfo | null> {
+  const lockPath = resolve(projectDir, LOCK_FILENAME);
+  return readLockFile(lockPath);
+}
+
 /** Check whether a process with the given PID is currently running. */
-function isPidAlive(pid: number): boolean {
+export function isPidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0); // Signal 0 — just checks existence
     return true;
