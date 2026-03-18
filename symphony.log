@@ -254,3 +254,26 @@
 {"ts":"2026-03-18T03:52:03.073Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
 {"ts":"2026-03-18T03:52:03.142Z","level":"info","msg":"tick","candidates":5,"running":5}
 {"ts":"2026-03-18T03:52:14.813Z","level":"info","msg":"stopping service"}
+{"ts":"2026-03-18T04:11:45.560Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:11:45.744Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:11:45.923Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:11:46.100Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:11:47.264Z","level":"info","msg":"tick","candidates":11,"running":5}
+{"ts":"2026-03-18T04:12:15.408Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:12:15.594Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:12:15.806Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:12:15.984Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:12:17.376Z","level":"info","msg":"tick","candidates":11,"running":5}
+{"ts":"2026-03-18T04:12:45.527Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:12:45.720Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:12:45.936Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:12:46.110Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:12:47.489Z","level":"info","msg":"tick","candidates":11,"running":5}
+{"ts":"2026-03-18T04:13:15.523Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:13:15.758Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:13:15.935Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:13:16.143Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:13:17.640Z","level":"info","msg":"tick","candidates":11,"running":5}
+{"ts":"2026-03-18T04:13:26.535Z","level":"info","msg":"workflow file changed, reloading config"}
+{"ts":"2026-03-18T04:13:26.536Z","level":"info","msg":"orchestrator config hot-reloaded"}
+{"ts":"2026-03-18T04:13:26.536Z","level":"info","msg":"workflow config reloaded successfully","poll_ms":30000,"max_concurrent":5,"runner":"pi -p --no-session"}

@@ -50,6 +50,7 @@ interface Args {
   json: boolean;
   workflow: string;
   port: number | null;
+  host: string;
   verbose: boolean;
   follow: boolean;
   lines: number;
@@ -62,6 +63,7 @@ function parseArgs(argv: string[]): Args {
     json: false,
     workflow: "WORKFLOW.md",
     port: null,
+    host: "127.0.0.1",
     verbose: false,
     follow: false,
     lines: 50,
@@ -719,7 +721,7 @@ polling:
   interval_ms: 30000
 hooks:
   after_create: |
-    git clone $REPO_URL . 2>/dev/null || true
+    git clone --single-branch --branch master $REPO_URL . 2>/dev/null || true
     rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
   before_run: |
     git fetch origin master 2>/dev/null || true

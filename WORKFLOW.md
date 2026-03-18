@@ -15,7 +15,7 @@ polling:
   interval_ms: 30000
 hooks:
   after_create: |
-    git clone git@github.com:ahkohd/symphony-beads.git . 2>/dev/null || true
+    git clone --single-branch --branch master git@github.com:ahkohd/symphony-beads.git . 2>/dev/null || true
     rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
   before_run: |
     git fetch origin master 2>/dev/null || true
