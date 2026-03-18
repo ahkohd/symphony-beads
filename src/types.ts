@@ -141,6 +141,7 @@ export type AgentEvent =
   | { kind: "turn_completed"; message: string }
   | { kind: "turn_failed"; message: string }
   | { kind: "turn_timeout"; message: string }
+  | { kind: "token_update"; tokens: TokenCount }
   | { kind: "log"; message: string };
 
 // -- CLI ---------------------------------------------------------------------

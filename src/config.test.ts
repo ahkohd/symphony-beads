@@ -205,6 +205,131 @@ describe("validateConfig", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Per-state concurrency limits
+// ---------------------------------------------------------------------------
+
+describe("parseWorkflow max_concurrent_by_state", () => {
+  it("defaults to null when not specified", () => {
+    const wf = parseWorkflow("Just a prompt.");
+    expect(wf.config.agent.max_concurrent_by_state).toBeNull();
+  });
+
+  it("parses nested map of state limits", () => {
+    const wf = parseWorkflow(`---
+agent:
+  max_concurrent: 5
+  max_concurrent_by_state:
+    open: 3
+    in_progress: 2
+---
+Prompt.`);
+    expect(wf.config.agent.max_concurrent_by_state).toEqual({
+      open: 3,
+      in_progress: 2,
+    });
+  });
+
+  it("parses single state limit", () => {
+    const wf = parseWorkflow(`---
+agent:
+  max_concurrent: 5
+  max_concurrent_by_state:
+    open: 1
+---
+Prompt.`);
+    expect(wf.config.agent.max_concurrent_by_state).toEqual({ open: 1 });
+  });
+
+  it("preserves other agent config alongside state limits", () => {
+    const wf = parseWorkflow(`---
+agent:
+  max_concurrent: 10
+  max_concurrent_by_state:
+    open: 3
+  max_turns: 30
+---
+Prompt.`);
+    expect(wf.config.agent.max_concurrent).toBe(10);
+    expect(wf.config.agent.max_concurrent_by_state).toEqual({ open: 3 });
+    expect(wf.config.agent.max_turns).toBe(30);
+  });
+});
+
+describe("validateConfig max_concurrent_by_state", () => {
+  function makeConfig(overrides: Partial<Record<string, unknown>> = {}): ServiceConfig {
+    const wf = parseWorkflow("Prompt.");
+    const cfg = wf.config;
+    for (const [path, val] of Object.entries(overrides)) {
+      const parts = path.split(".");
+      let target: Record<string, unknown> = cfg as unknown as Record<string, unknown>;
+      for (let i = 0; i < parts.length - 1; i++) {
+        target = target[parts[i]!] as Record<string, unknown>;
+      }
+      target[parts[parts.length - 1]!] = val;
+    }
+    return cfg;
+  }
+
+  it("accepts valid per-state limits within global limit", () => {
+    const errors = validateConfig(
+      makeConfig({
+        "agent.max_concurrent": 5,
+        "agent.max_concurrent_by_state": { open: 3, in_progress: 2 },
+      }),
+    );
+    expect(errors).toEqual([]);
+  });
+
+  it("accepts per-state limit equal to global limit", () => {
+    const errors = validateConfig(
+      makeConfig({
+        "agent.max_concurrent": 5,
+        "agent.max_concurrent_by_state": { open: 5 },
+      }),
+    );
+    expect(errors).toEqual([]);
+  });
+
+  it("rejects per-state limit exceeding global limit", () => {
+    const errors = validateConfig(
+      makeConfig({
+        "agent.max_concurrent": 3,
+        "agent.max_concurrent_by_state": { open: 5 },
+      }),
+    );
+    expect(errors).toContainEqual(expect.stringContaining("exceeds agent.max_concurrent"));
+    expect(errors).toContainEqual(expect.stringContaining("open"));
+  });
+
+  it("rejects per-state limit < 1", () => {
+    const errors = validateConfig(
+      makeConfig({
+        "agent.max_concurrent": 5,
+        "agent.max_concurrent_by_state": { open: 0 },
+      }),
+    );
+    expect(errors).toContainEqual(expect.stringContaining("max_concurrent_by_state.open must be >= 1"));
+  });
+
+  it("reports errors for multiple invalid state limits", () => {
+    const errors = validateConfig(
+      makeConfig({
+        "agent.max_concurrent": 3,
+        "agent.max_concurrent_by_state": { open: 0, in_progress: 10 },
+      }),
+    );
+    expect(errors.length).toBe(2);
+  });
+
+  it("no errors when max_concurrent_by_state is null", () => {
+    const errors = validateConfig(
+      makeConfig({ "agent.max_concurrent_by_state": null }),
+    );
+    expect(errors).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // YAML pipe strings (existing tests, kept intact)
 // ---------------------------------------------------------------------------
 
