@@ -369,11 +369,27 @@ export class IssueDetailOverlay {
     const typeLabel = dep.dependency_type === "blocks" ? "\u2298 blocks" : dep.dependency_type;
 
     return Box(
-      { flexDirection: "row", gap: 1, paddingLeft: 2 },
-      Text({ content: "\u25CF", fg: statusColor }),
-      Text({ content: dep.id, fg: COLORS.accent }),
-      Text({ content: dep.title, fg: COLORS.text, truncate: true }),
-      Text({ content: `(${typeLabel})`, fg: COLORS.textDim }),
+      {
+        flexDirection: "column",
+        gap: 0,
+        paddingLeft: 1,
+        paddingBottom: 1,
+      },
+      Box(
+        { flexDirection: "row", gap: 1, paddingLeft: 1 },
+        Text({ content: "\u25CF", fg: statusColor }),
+        Text({ content: dep.status, fg: statusColor }),
+        Text({ content: dep.id, fg: COLORS.accent }),
+        Text({ content: `(${typeLabel})`, fg: COLORS.textDim }),
+      ),
+      Box(
+        {
+          flexDirection: "column",
+          paddingLeft: 3,
+          paddingRight: 1,
+        },
+        Text({ content: dep.title, fg: COLORS.text, wrapMode: "word" }),
+      ),
     );
   }
 
