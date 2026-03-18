@@ -71,12 +71,14 @@ beforeEach(async () => {
 
 afterEach(async () => {
   // Clean up: kill any daemon we started, remove temp dir
+  // IMPORTANT: never kill our own PID — the duplicate-start test writes
+  // process.pid to .symphony.lock, so we must skip it here.
   try {
     const lockPath = join(tempDir, ".symphony.lock");
     const lockFile = Bun.file(lockPath);
     if (await lockFile.exists()) {
       const lockData = JSON.parse(await lockFile.text());
-      if (lockData.pid) {
+      if (lockData.pid && lockData.pid !== process.pid) {
         try { process.kill(lockData.pid, "SIGKILL"); } catch { /* already dead */ }
       }
     }
