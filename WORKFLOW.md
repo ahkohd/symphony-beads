@@ -18,7 +18,11 @@ hooks:
     git clone git@github.com:ahkohd/symphony-beads.git . 2>/dev/null || true
   before_run: |
     git fetch origin 2>/dev/null || true
-    git checkout -B issue/$SYMPHONY_ISSUE_ID origin/master 2>/dev/null || git checkout -B issue/$SYMPHONY_ISSUE_ID
+    if git rev-parse --verify origin/issue/$SYMPHONY_ISSUE_ID >/dev/null 2>&1; then
+      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/issue/$SYMPHONY_ISSUE_ID
+    else
+      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/master 2>/dev/null || git checkout -B issue/$SYMPHONY_ISSUE_ID
+    fi
 log:
   file: ./symphony.log
 ---
@@ -30,6 +34,18 @@ Title: {{ issue.title }}
 Description: {{ issue.description }}
 Priority: {{ issue.priority }}
 Labels: {{ issue.labels }}
+
+{{#review_feedback}}
+## ⚠️ PR Review Feedback (Rework Required)
+
+A pull request was previously submitted for this issue and received reviewer
+feedback. **Your primary goal is to address the comments below.** Work on the
+existing branch — do NOT create a new one.
+
+{{ review_feedback }}
+
+---
+{{/review_feedback}}
 
 ## Workflow
 

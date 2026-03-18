@@ -8,8 +8,15 @@ import type { Issue } from "./types.ts";
  * Render a prompt template with issue data.
  * Supports {{ var }}, {{ obj.key }}, {{#section}}...{{/section}}, and
  * {{^section}}...{{/section}} (inverted).
+ *
+ * @param extra - Additional top-level template variables (e.g. review_feedback)
  */
-export function renderPrompt(template: string, issue: Issue, attempt: number | null): string {
+export function renderPrompt(
+  template: string,
+  issue: Issue,
+  attempt: number | null,
+  extra?: Record<string, unknown>,
+): string {
   const view: Record<string, unknown> = {
     issue: {
       id: issue.id,
@@ -22,6 +29,7 @@ export function renderPrompt(template: string, issue: Issue, attempt: number | n
       blocked_by: issue.blocked_by,
     },
     attempt: attempt ?? "",
+    ...extra,
   };
 
   return render(template, view);

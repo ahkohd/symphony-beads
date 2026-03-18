@@ -6,6 +6,7 @@ import { join } from "path";
 import type { AgentEvent, Issue, RunnerConfig } from "./types.ts";
 import { WorkspaceManager } from "./workspace.ts";
 import { renderPrompt } from "./template.ts";
+import { exec } from "./exec.ts";
 import { log } from "./log.ts";
 
 export type EventCallback = (event: AgentEvent) => void;
@@ -41,7 +42,20 @@ export class AgentRunner {
       throw new Error("before_run hook failed");
     }
 
-    const prompt = renderPrompt(promptTemplate, issue, attempt);
+    // Detect rework: if a PR already exists for this issue branch, fetch
+    // review feedback so the agent knows what the reviewer wants fixed.
+    const branchName = `issue/${issue.identifier}`;
+    const reviewFeedback = await fetchPrReviewFeedback(ws.path, branchName);
+    if (reviewFeedback) {
+      log.info("rework detected — injecting PR review feedback", {
+        issue_id: issue.id,
+        branch: branchName,
+      });
+    }
+
+    const prompt = renderPrompt(promptTemplate, issue, attempt, {
+      review_feedback: reviewFeedback ?? "",
+    });
     const taskFile = join(ws.path, "TASK.md");
     await Bun.write(taskFile, prompt);
 
@@ -147,6 +161,80 @@ export class AgentRunner {
         }
       });
     });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PR review feedback for rework detection
+// ---------------------------------------------------------------------------
+
+interface GhReview {
+  author?: { login?: string };
+  body?: string;
+  state?: string;
+  submittedAt?: string;
+}
+
+interface GhComment {
+  author?: { login?: string };
+  body?: string;
+  createdAt?: string;
+}
+
+/**
+ * Check if a PR exists for the given branch and return formatted review
+ * feedback. Returns null if no PR exists or there's no actionable feedback.
+ */
+async function fetchPrReviewFeedback(
+  cwd: string,
+  branchName: string,
+): Promise<string | null> {
+  const result = await exec(
+    ["gh", "pr", "view", branchName, "--json", "number,reviews,comments"],
+    { cwd },
+  );
+
+  if (result.code !== 0) {
+    // No PR found or gh CLI not available — not a rework
+    return null;
+  }
+
+  try {
+    const data = JSON.parse(result.stdout) as {
+      number?: number;
+      reviews?: GhReview[];
+      comments?: GhComment[];
+    };
+
+    const parts: string[] = [];
+
+    // Include reviews (especially CHANGES_REQUESTED with body text)
+    if (data.reviews?.length) {
+      for (const review of data.reviews) {
+        if (review.body?.trim()) {
+          const author = review.author?.login ?? "reviewer";
+          const state = review.state ?? "COMMENTED";
+          parts.push(`**${author}** (${state}):\n${review.body.trim()}`);
+        }
+      }
+    }
+
+    // Include PR-level comments
+    if (data.comments?.length) {
+      for (const comment of data.comments) {
+        if (comment.body?.trim()) {
+          const author = comment.author?.login ?? "commenter";
+          parts.push(`**${author}**:\n${comment.body.trim()}`);
+        }
+      }
+    }
+
+    if (parts.length === 0) return null;
+
+    return parts.join("\n\n---\n\n");
+  } catch {
+    log.debug("failed to parse gh pr view output", { branch: branchName });
+    return null;
   }
 }
 
