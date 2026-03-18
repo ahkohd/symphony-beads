@@ -1,18 +1,19 @@
 import { describe, expect, it, beforeEach, mock } from "bun:test";
-import { BeadsTracker } from "./tracker.ts";
 import type { ServiceConfig } from "./types.ts";
 
 // ---------------------------------------------------------------------------
-// Mock exec() — intercept all subprocess calls
+// Mock exec() via mock.module — must be before importing tracker
 // ---------------------------------------------------------------------------
 
 const execMock = mock(() =>
   Promise.resolve({ code: 0, stdout: "", stderr: "" }),
 );
 
-// Replace the exec module
-import * as execMod from "./exec.ts";
-(execMod as Record<string, unknown>).exec = execMock;
+mock.module("./exec.ts", () => ({
+  exec: execMock,
+}));
+
+import { BeadsTracker } from "./tracker.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers

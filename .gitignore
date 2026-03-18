@@ -6,3 +6,4 @@
 # Symphony lock files (runtime, per-project)
 .symphony.lock
 workspaces/
+node_modules

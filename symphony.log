@@ -277,3 +277,8 @@
 {"ts":"2026-03-18T04:13:26.535Z","level":"info","msg":"workflow file changed, reloading config"}
 {"ts":"2026-03-18T04:13:26.536Z","level":"info","msg":"orchestrator config hot-reloaded"}
 {"ts":"2026-03-18T04:13:26.536Z","level":"info","msg":"workflow config reloaded successfully","poll_ms":30000,"max_concurrent":5,"runner":"pi -p --no-session"}
+{"ts":"2026-03-18T04:13:45.543Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:13:45.722Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:13:45.929Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:13:46.106Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:13:47.755Z","level":"info","msg":"tick","candidates":11,"running":5}
