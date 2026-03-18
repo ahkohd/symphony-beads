@@ -300,7 +300,7 @@ function KanbanColumn({
   );
 }
 
-function Footer({ statusMsg }: { statusMsg: string }) {
+function Footer() {
   return (
     <box
       style={{
@@ -332,7 +332,6 @@ function Footer({ statusMsg }: { statusMsg: string }) {
         <span fg={COLORS.textDim}>q</span>
         <span fg={COLORS.text}> quit</span>
       </text>
-      {statusMsg ? <text fg={COLORS.yellow}>{statusMsg}</text> : null}
     </box>
   );
 }
@@ -611,7 +610,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
         })}
       </box>
 
-      <Footer statusMsg={statusMsg} />
+      <Footer />
     </box>
   );
 }
