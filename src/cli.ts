@@ -940,7 +940,6 @@ polling:
 hooks:
   after_create: |
     git clone --single-branch --branch master $REPO_URL . 2>/dev/null || true
-    rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
     echo "node_modules" >> .gitignore
     bun install 2>/dev/null || npm install 2>/dev/null || true
     cat >> AGENTS.md << 'AGENTS'

@@ -16,13 +16,15 @@ export class AgentRunner {
   private model: string | null;
   private models: Record<string, string> | null;
   private turnTimeout: number;
+  private projectPath: string | null;
   private active: Map<string, Subprocess> = new Map();
 
-  constructor(config: RunnerConfig) {
+  constructor(config: RunnerConfig, projectPath?: string) {
     this.commandTemplate = config.command;
     this.model = config.model;
     this.models = config.models;
     this.turnTimeout = config.turn_timeout_ms;
+    this.projectPath = projectPath ?? null;
   }
 
   /**
@@ -32,6 +34,10 @@ export class AgentRunner {
   private buildCommand(issue: Issue): { command: string[]; env: Record<string, string> } {
     const resolved = resolveModel(issue, this.models);
     const env: Record<string, string> = { ...process.env } as Record<string, string>;
+    // Point bd commands at the main project's beads DB, not the workspace
+    if (this.projectPath) {
+      env.BEADS_DIR = join(this.projectPath, ".beads");
+    }
 
     let cmdStr = this.commandTemplate;
 

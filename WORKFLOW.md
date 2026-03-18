@@ -18,7 +18,7 @@ polling:
 hooks:
   after_create: |
     gh repo clone $SYMPHONY_REPO . || true
-    rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
+
     echo "node_modules" >> .gitignore
     bun install 2>/dev/null || true
     cat >> AGENTS.md << 'AGENTS'

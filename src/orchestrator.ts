@@ -2,6 +2,7 @@
 // Orchestrator — poll / dispatch / reconcile / retry loop
 // ---------------------------------------------------------------------------
 
+import { resolve } from "path";
 import type {
   AgentEvent,
   AgentTotals,
@@ -50,7 +51,7 @@ export class Orchestrator {
     this.promptTemplate = promptTemplate;
     this.tracker = tracker;
     this.workspace = workspace;
-    this.runner = new AgentRunner(config.runner);
+    this.runner = new AgentRunner(config.runner, resolve(config.tracker.project_path));
   }
 
   // -- Public API ------------------------------------------------------------
@@ -81,7 +82,7 @@ export class Orchestrator {
   reload(config: ServiceConfig, promptTemplate: string): void {
     this.config = config;
     this.promptTemplate = promptTemplate;
-    this.runner = new AgentRunner(config.runner);
+    this.runner = new AgentRunner(config.runner, resolve(config.tracker.project_path));
     this.tracker = new BeadsTracker(config);
     this.workspace = new WorkspaceManager(config);
     log.info("orchestrator config hot-reloaded");
