@@ -40,6 +40,12 @@ export interface ServiceConfig {
   agent: AgentConfig;
   runner: RunnerConfig;
   log: LogConfig;
+  server?: ServerConfig;
+}
+
+export interface ServerConfig {
+  port: number | null;
+  hostname: string;
 }
 
 export interface LogConfig {

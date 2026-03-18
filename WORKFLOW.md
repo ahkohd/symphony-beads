@@ -18,17 +18,21 @@ hooks:
     git clone git@github.com:ahkohd/symphony-beads.git . 2>/dev/null || true
     rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
   before_run: |
-    git fetch origin 2>/dev/null || true
+    git fetch origin master 2>/dev/null || true
+    git fetch origin issue/$SYMPHONY_ISSUE_ID 2>/dev/null || true
     if git rev-parse --verify origin/issue/$SYMPHONY_ISSUE_ID >/dev/null 2>&1; then
       git checkout -B issue/$SYMPHONY_ISSUE_ID origin/issue/$SYMPHONY_ISSUE_ID
     else
-      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/master 2>/dev/null || git checkout -B issue/$SYMPHONY_ISSUE_ID
+      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/master
     fi
+    git clean -fd 2>/dev/null || true
 log:
   file: ./symphony.log
 ---
 
-You are working on a Beads issue.
+You are working on a single Beads issue. Work ONLY on this issue.
+Do not implement other features, even if they seem related or you can
+see other open issues on the board. One issue = one branch = one PR.
 
 Issue: {{ issue.identifier }}
 Title: {{ issue.title }}

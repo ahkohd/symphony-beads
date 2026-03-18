@@ -231,8 +231,20 @@ async function cmdStart(args: Args): Promise<void> {
   const prMonitor = new PrMonitor(config);
   prMonitor.start();
 
+  // Start optional HTTP dashboard (spec §13.7)
+  let httpDashboard: HttpDashboard | null = null;
+  const serverPort = args.port ?? config.server?.port ?? null;
+  if (serverPort) {
+    httpDashboard = new HttpDashboard(orchestrator, tracker, {
+      port: serverPort,
+      hostname: config.server?.hostname ?? "127.0.0.1",
+    });
+    httpDashboard.start();
+  }
+
   // Graceful shutdown with cleanup
   const shutdown = async () => {
+    httpDashboard?.stop();
     prMonitor.stop();
     watcher.stop();
     orchestrator.stop();
@@ -384,6 +396,117 @@ async function cmdInstances(args: Args): Promise<void> {
     console.log(`  Started:    ${inst.started_at}`);
     console.log("");
   }
+}
+
+async function cmdStop(args: Args): Promise<void> {
+  if (args.all) {
+    await cmdStopAll(args);
+    return;
+  }
+
+  // Stop the instance for the current project
+  const projectDir = resolve(dirname(args.workflow));
+  const lockInfo = await readProjectLock(projectDir);
+
+  if (!lockInfo) {
+    if (args.json) {
+      console.log(JSON.stringify({ error: "not_running", message: "No symphony instance running for this project" }));
+    } else {
+      log.info("no symphony instance running for this project");
+    }
+    process.exit(1);
+  }
+
+  const result = await stopProcess(lockInfo);
+
+  // Clean up lock file and registry
+  await releaseLock(projectDir);
+  await unregisterInstance(projectDir);
+
+  if (args.json) {
+    console.log(JSON.stringify(result));
+  } else {
+    if (result.killed) {
+      log.info(`stopped symphony instance`, { pid: result.pid, signal: result.signal });
+    } else if (result.already_dead) {
+      log.info(`instance was already stopped (stale lock cleaned up)`, { pid: result.pid });
+    }
+  }
+}
+
+async function cmdStopAll(args: Args): Promise<void> {
+  const instances = await listInstances();
+
+  if (instances.length === 0) {
+    if (args.json) {
+      console.log(JSON.stringify({ stopped: [], message: "No running instances" }));
+    } else {
+      console.log("No running symphony instances.");
+    }
+    return;
+  }
+
+  const results: Array<{ pid: number; project: string; killed: boolean; already_dead: boolean; signal: string }> = [];
+
+  for (const inst of instances) {
+    const result = await stopProcess(inst);
+    results.push({ ...result, project: inst.project_path });
+
+    // Clean up lock file and registry
+    await releaseLock(inst.project_path);
+    await unregisterInstance(inst.project_path);
+  }
+
+  if (args.json) {
+    console.log(JSON.stringify({ stopped: results }));
+  } else {
+    for (const r of results) {
+      if (r.killed) {
+        log.info(`stopped instance`, { pid: r.pid, project: r.project, signal: r.signal });
+      } else if (r.already_dead) {
+        log.info(`cleaned up stale instance`, { pid: r.pid, project: r.project });
+      }
+    }
+    console.log(`\nStopped ${results.filter(r => r.killed).length} instance(s), cleaned ${results.filter(r => r.already_dead).length} stale lock(s).`);
+  }
+}
+
+/** Send SIGTERM, wait up to 5s for graceful shutdown, then SIGKILL if needed. */
+async function stopProcess(info: { pid: number }): Promise<{ pid: number; killed: boolean; already_dead: boolean; signal: string }> {
+  const { pid } = info;
+
+  if (!isPidAlive(pid)) {
+    return { pid, killed: false, already_dead: true, signal: "none" };
+  }
+
+  // Send SIGTERM for graceful shutdown
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return { pid, killed: false, already_dead: true, signal: "none" };
+  }
+
+  // Wait up to 5 seconds for process to exit
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    await Bun.sleep(250);
+    if (!isPidAlive(pid)) {
+      return { pid, killed: true, already_dead: false, signal: "SIGTERM" };
+    }
+  }
+
+  // Still alive — force kill
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // Process may have died between check and kill
+    return { pid, killed: true, already_dead: false, signal: "SIGTERM" };
+  }
+
+  // Brief wait for SIGKILL to take effect
+  await Bun.sleep(500);
+
+  return { pid, killed: true, already_dead: false, signal: "SIGKILL" };
 }
 
 async function cmdDoctor(args: Args): Promise<void> {
@@ -599,17 +722,21 @@ hooks:
     git clone $REPO_URL . 2>/dev/null || true
     rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
   before_run: |
-    git fetch origin 2>/dev/null || true
+    git fetch origin master 2>/dev/null || true
+    git fetch origin issue/$SYMPHONY_ISSUE_ID 2>/dev/null || true
     if git rev-parse --verify origin/issue/$SYMPHONY_ISSUE_ID >/dev/null 2>&1; then
       git checkout -B issue/$SYMPHONY_ISSUE_ID origin/issue/$SYMPHONY_ISSUE_ID
     else
-      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/HEAD 2>/dev/null || git checkout -B issue/$SYMPHONY_ISSUE_ID
+      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/master
     fi
+    git clean -fd 2>/dev/null || true
 log:
   file: ./symphony.log
 ---
 
-You are working on a Beads issue.
+You are working on a single Beads issue. Work ONLY on this issue.
+Do not implement other features, even if they seem related or you can
+see other open issues on the board. One issue = one branch = one PR.
 
 Issue: {{ issue.identifier }}
 Title: {{ issue.title }}
