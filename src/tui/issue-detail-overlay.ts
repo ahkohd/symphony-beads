@@ -340,7 +340,6 @@ export class IssueDetailOverlay {
       content: "\u2500".repeat(300),
       fg: COLORS.border,
       wrapMode: "none",
-      truncate: true,
     });
   }
 
