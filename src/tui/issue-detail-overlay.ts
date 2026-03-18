@@ -235,14 +235,7 @@ export class IssueDetailOverlay {
       }
     }
 
-    // -- Footer --
-    children.push(this.buildDivider());
-    children.push(
-      Text({
-        content: " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom",
-        fg: COLORS.textDim,
-      }),
-    );
+    const footerText = " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom";
 
     // Filter out nulls
     const validChildren = children.filter((c): c is NonNullable<VChild> => c != null);
@@ -261,26 +254,41 @@ export class IssueDetailOverlay {
         alignItems: "center",
         zIndex: 100,
       },
-      ScrollBox(
+      Box(
         {
-          id: "issue-detail-scrollbox",
           borderStyle: "rounded",
           border: true,
           borderColor: COLORS.border,
           backgroundColor: COLORS.bg,
-          padding: 1,
-          paddingX: 2,
           width: "80%",
           height: "85%",
           maxWidth: 100,
-          stickyStart: "top",
-          focusable: true,
-          contentOptions: {
-            flexDirection: "column",
-            gap: 1,
-          },
+          flexDirection: "column",
         },
-        ...validChildren,
+        ScrollBox(
+          {
+            id: "issue-detail-scrollbox",
+            backgroundColor: COLORS.bg,
+            padding: 1,
+            paddingX: 2,
+            flexGrow: 1,
+            stickyStart: "top",
+            focusable: true,
+            contentOptions: {
+              flexDirection: "column",
+              gap: 1,
+            },
+          },
+          ...validChildren,
+        ),
+        Box(
+          {
+            paddingLeft: 1,
+            paddingRight: 2,
+          },
+          Text({ content: "\u2500".repeat(300), fg: COLORS.border, wrapMode: "none" }),
+          Text({ content: footerText, fg: COLORS.textDim, wrapMode: "none" }),
+        ),
       ),
     );
 
