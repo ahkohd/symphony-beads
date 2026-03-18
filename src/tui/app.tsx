@@ -4,8 +4,8 @@
 // Five-column kanban layout (Open, In Progress, Review, Closed, Deferred).
 // Arrow keys or vim keys (h/j/k/l) navigate cards, Enter for details,
 // m/M to move status, b to send to backlog (deferred),
-// B to promote from backlog to open, n for issue-creation guidance,
-// d to close/delete.
+// B to promote from backlog to open, s to sort current column,
+// n for issue-creation guidance, d to close/delete.
 //
 // ---------------------------------------------------------------------------
 
@@ -25,6 +25,9 @@ interface Issue {
   priority: number | null;
   issue_type: string;
   owner: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  closed_at: string | null;
 }
 
 /** Position of the selected card: column index + card index within column. */
@@ -89,6 +92,9 @@ async function fetchAllIssues(): Promise<Issue[]> {
       priority: typeof raw.priority === "number" ? raw.priority : null,
       issue_type: (raw.issue_type as string) ?? "task",
       owner: (raw.owner as string) ?? null,
+      created_at: typeof raw.created_at === "string" ? raw.created_at : null,
+      updated_at: typeof raw.updated_at === "string" ? raw.updated_at : null,
+      closed_at: typeof raw.closed_at === "string" ? raw.closed_at : null,
     }));
   } catch {
     return [];
@@ -121,19 +127,68 @@ async function closeIssue(issueId: string): Promise<boolean> {
 
 // -- Helpers -----------------------------------------------------------------
 
+type ColumnSortMode = "default" | "priority";
+
 function truncStr(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
-function bucketIssues(issues: Issue[]): Map<string, Issue[]> {
+function parseIssueTs(value: string | null): number {
+  if (!value) return 0;
+  const ts = Date.parse(value);
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function getRecencyTs(issue: Issue): number {
+  return parseIssueTs(issue.closed_at ?? issue.updated_at ?? issue.created_at);
+}
+
+function compareClosedNewestFirst(a: Issue, b: Issue): number {
+  const diff = getRecencyTs(b) - getRecencyTs(a);
+  if (diff !== 0) return diff;
+  return b.id.localeCompare(a.id);
+}
+
+function compareByPriority(a: Issue, b: Issue): number {
+  const pa = a.priority ?? Number.POSITIVE_INFINITY;
+  const pb = b.priority ?? Number.POSITIVE_INFINITY;
+  if (pa !== pb) return pa - pb;
+
+  const recencyDiff = getRecencyTs(b) - getRecencyTs(a);
+  if (recencyDiff !== 0) return recencyDiff;
+
+  return a.id.localeCompare(b.id);
+}
+
+function bucketIssues(
+  issues: Issue[],
+  sortModes: Readonly<Record<string, ColumnSortMode>>,
+): Map<string, Issue[]> {
   const buckets = new Map<string, Issue[]>();
   for (const col of COLUMNS) {
     buckets.set(col.key, []);
   }
+
   for (const issue of issues) {
     const key = STATUS_ORDER.includes(issue.status) ? issue.status : "open";
     buckets.get(key)!.push(issue);
   }
+
+  for (const col of COLUMNS) {
+    const items = buckets.get(col.key);
+    if (!items || items.length <= 1) continue;
+
+    const mode = sortModes[col.key] ?? "default";
+    if (mode === "priority") {
+      items.sort(compareByPriority);
+      continue;
+    }
+
+    if (col.key === "closed") {
+      items.sort(compareClosedNewestFirst);
+    }
+  }
+
   return buckets;
 }
 
@@ -326,6 +381,8 @@ function Footer() {
         <span fg={COLORS.text}> defer/promote </span>
         <span fg={COLORS.textDim}>n</span>
         <span fg={COLORS.text}> create via agent </span>
+        <span fg={COLORS.textDim}>s</span>
+        <span fg={COLORS.text}> sort col </span>
         <span fg={COLORS.textDim}>d</span>
         <span fg={COLORS.text}> close </span>
         <span fg={COLORS.textDim}>r</span>
@@ -343,9 +400,10 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
   const [issues, setIssues] = useState<Issue[]>([]);
   const [cursor, setCursor] = useState<CursorPos>({ col: 0, row: 0 });
   const [statusMsg, setStatusMsg] = useState("loading…");
+  const [columnSortModes, setColumnSortModes] = useState<Record<string, ColumnSortMode>>({});
   const overlayRef = useRef(false);
 
-  const buckets = bucketIssues(issues);
+  const buckets = bucketIssues(issues, columnSortModes);
 
   // -- Data refresh ----------------------------------------------------------
 
@@ -498,6 +556,25 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
         setStatusMsg("refreshing…");
         refresh();
         break;
+
+      case "s": {
+        const col = COLUMNS[cursor.col];
+        if (!col) break;
+
+        const currentMode = columnSortModes[col.key] ?? "default";
+        const nextMode: ColumnSortMode = currentMode === "default" ? "priority" : "default";
+
+        setColumnSortModes((prev) => ({ ...prev, [col.key]: nextMode }));
+
+        if (nextMode === "priority") {
+          setStatusMsg(`${col.label} sorted by priority (P0→P4)`);
+        } else if (col.key === "closed") {
+          setStatusMsg("Closed sorted by newest → oldest");
+        } else {
+          setStatusMsg(`${col.label} using default order`);
+        }
+        break;
+      }
 
       case "left":
       case "h":
