@@ -395,14 +395,17 @@ async function cmdStatus(args: Args): Promise<void> {
       const c = liveSnap.counts;
       const t = liveSnap.totals;
       console.log(`  Running: ${c.running}  Retrying: ${c.retrying}  Completed: ${c.completed}  Claimed: ${c.claimed}`);
-      console.log(`  Tokens:  ${fmtTokens(t.input_tokens)} in / ${fmtTokens(t.output_tokens)} out (${fmtTokens(t.total_tokens)} total)`);
+      console.log(`  Tokens:  ${fmtTokens(t.input_tokens)} in / ${fmtTokens(t.output_tokens)} out / ${fmtTokens(t.cache_read_tokens ?? 0)} cache-read / ${fmtTokens(t.cache_write_tokens ?? 0)} cache-write (${fmtTokens(t.total_tokens)} total)`);
+      if ((t.total_cost ?? 0) > 0) {
+        console.log(`  Cost:    $${t.total_cost.toFixed(4)}`);
+      }
       console.log(`  Uptime:  ${fmtDuration(t.seconds_running * 1000)}`);
       console.log("");
 
       if (liveSnap.running.length > 0) {
         console.log("  Running agents:");
         for (const r of liveSnap.running) {
-          const tok = r.tokens.total > 0 ? ` [${fmtTokens(r.tokens.input)}/${fmtTokens(r.tokens.output)} tok]` : "";
+          const tok = r.tokens.total > 0 ? ` [${fmtTokens(r.tokens.total)} tok, $${(r.tokens.cost ?? 0).toFixed(4)}]` : "";
           console.log(`    ${r.issue_identifier}  [${r.state}]  ${fmtDuration(r.elapsed_ms)}${tok}  ${r.title}`);
         }
         console.log("");

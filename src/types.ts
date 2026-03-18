@@ -127,13 +127,19 @@ export interface RetryEntry {
 export interface TokenCount {
   input: number;
   output: number;
+  cache_read: number;
+  cache_write: number;
   total: number;
+  cost: number;
 }
 
 export interface AgentTotals {
   input_tokens: number;
   output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
   total_tokens: number;
+  total_cost: number;
   ended_seconds: number;
 }
 

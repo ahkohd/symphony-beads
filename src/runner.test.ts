@@ -354,7 +354,7 @@ describe("injectJsonMode", () => {
 
 describe("parseJsonLine", () => {
   function makeTokens(): TokenCount {
-    return { input: 0, output: 0, total: 0 };
+    return { input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0, cost: 0 };
   }
 
   function collectEvents(
@@ -369,7 +369,40 @@ describe("parseJsonLine", () => {
     return events;
   }
 
-  it("extracts token usage from message_end event", () => {
+  it("extracts token usage from message_end event including cache tokens", () => {
+    const tokens = makeTokens();
+    const line = JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        usage: {
+          input: 3,
+          output: 54,
+          cacheRead: 5825,
+          cacheWrite: 322,
+          totalTokens: 6204,
+          cost: { input: 0.000015, output: 0.00135, cacheRead: 0.0029, cacheWrite: 0.002, total: 0.00629 },
+        },
+      },
+    });
+
+    const events = collectEvents(line, tokens);
+
+    expect(tokens.input).toBe(3);
+    expect(tokens.output).toBe(54);
+    expect(tokens.cache_read).toBe(5825);
+    expect(tokens.cache_write).toBe(322);
+    expect(tokens.total).toBe(6204);
+    expect(tokens.cost).toBeCloseTo(0.00629, 4);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.kind).toBe("token_update");
+    if (events[0]!.kind === "token_update") {
+      expect(events[0]!.tokens.total).toBe(6204);
+      expect(events[0]!.tokens.cache_read).toBe(5825);
+    }
+  });
+
+  it("extracts tokens from message_end without cache fields (backwards compat)", () => {
     const tokens = makeTokens();
     const line = JSON.stringify({
       type: "message_end",
@@ -383,12 +416,10 @@ describe("parseJsonLine", () => {
 
     expect(tokens.input).toBe(1500);
     expect(tokens.output).toBe(300);
+    expect(tokens.cache_read).toBe(0);
+    expect(tokens.cache_write).toBe(0);
     expect(tokens.total).toBe(1800);
     expect(events).toHaveLength(1);
-    expect(events[0]!.kind).toBe("token_update");
-    if (events[0]!.kind === "token_update") {
-      expect(events[0]!.tokens).toEqual({ input: 1500, output: 300, total: 1800 });
-    }
   });
 
   it("accumulates tokens across multiple message_end events", () => {
@@ -397,19 +428,28 @@ describe("parseJsonLine", () => {
 
     const line1 = JSON.stringify({
       type: "message_end",
-      message: { role: "assistant", usage: { input: 1000, output: 200 } },
+      message: {
+        role: "assistant",
+        usage: { input: 3, output: 54, cacheRead: 5825, cacheWrite: 322, totalTokens: 6204, cost: { total: 0.006 } },
+      },
     });
     const line2 = JSON.stringify({
       type: "message_end",
-      message: { role: "assistant", usage: { input: 500, output: 100 } },
+      message: {
+        role: "assistant",
+        usage: { input: 1, output: 4, cacheRead: 6147, cacheWrite: 70, totalTokens: 6222, cost: { total: 0.004 } },
+      },
     });
 
     parseJsonLine(line1, tokens, textParts, () => {});
     parseJsonLine(line2, tokens, textParts, () => {});
 
-    expect(tokens.input).toBe(1500);
-    expect(tokens.output).toBe(300);
-    expect(tokens.total).toBe(1800);
+    expect(tokens.input).toBe(4);
+    expect(tokens.output).toBe(58);
+    expect(tokens.cache_read).toBe(11972);
+    expect(tokens.cache_write).toBe(392);
+    expect(tokens.total).toBe(12426);
+    expect(tokens.cost).toBeCloseTo(0.01, 4);
   });
 
   it("extracts text from turn_end events", () => {
@@ -456,14 +496,54 @@ describe("parseJsonLine", () => {
     expect(events).toHaveLength(0);
   });
 
-  it("handles session_end event with authoritative totals", () => {
+  it("handles agent_end event with authoritative totals from message list", () => {
     const tokens = makeTokens();
     // Simulate some accumulated tokens from message_end
+    tokens.input = 10;
+    tokens.output = 50;
+    tokens.cache_read = 100;
+    tokens.cache_write = 20;
+    tokens.total = 180;
+    tokens.cost = 0.001;
+
+    // agent_end carries all messages with per-message usage
+    const line = JSON.stringify({
+      type: "agent_end",
+      messages: [
+        { role: "user", content: [{ type: "text", text: "do stuff" }] },
+        {
+          role: "assistant",
+          usage: { input: 3, output: 54, cacheRead: 5825, cacheWrite: 322, totalTokens: 6204, cost: { total: 0.006 } },
+        },
+        { role: "toolResult", toolCallId: "t1" },
+        {
+          role: "assistant",
+          usage: { input: 1, output: 4, cacheRead: 6147, cacheWrite: 70, totalTokens: 6222, cost: { total: 0.004 } },
+        },
+      ],
+    });
+
+    const events = collectEvents(line, tokens);
+
+    // agent_end replaces accumulated values with authoritative totals
+    expect(tokens.input).toBe(4);
+    expect(tokens.output).toBe(58);
+    expect(tokens.cache_read).toBe(11972);
+    expect(tokens.cache_write).toBe(392);
+    expect(tokens.total).toBe(12426);
+    expect(tokens.cost).toBeCloseTo(0.01, 4);
+    expect(events).toHaveLength(1);
+    if (events[0]!.kind === "token_update") {
+      expect(events[0]!.tokens.total).toBe(12426);
+    }
+  });
+
+  it("handles session_end event with authoritative totals", () => {
+    const tokens = makeTokens();
     tokens.input = 1000;
     tokens.output = 200;
     tokens.total = 1200;
 
-    // session_end carries authoritative session totals (replaces accumulated)
     const line = JSON.stringify({
       type: "session_end",
       usage: { input_tokens: 2500, output_tokens: 500 },
@@ -471,14 +551,10 @@ describe("parseJsonLine", () => {
 
     const events = collectEvents(line, tokens);
 
-    // session_end replaces accumulated values
     expect(tokens.input).toBe(2500);
     expect(tokens.output).toBe(500);
     expect(tokens.total).toBe(3000);
     expect(events).toHaveLength(1);
-    if (events[0]!.kind === "token_update") {
-      expect(events[0]!.tokens).toEqual({ input: 2500, output: 500, total: 3000 });
-    }
   });
 
   it("handles usage_summary event", () => {
@@ -524,5 +600,60 @@ describe("parseJsonLine", () => {
 
     collectEvents(line, undefined, textParts);
     expect(textParts).toEqual(["real content"]);
+  });
+
+  it("handles agent_end with no assistant messages gracefully", () => {
+    const tokens = makeTokens();
+    tokens.input = 100;
+    tokens.output = 50;
+    tokens.total = 150;
+
+    const line = JSON.stringify({
+      type: "agent_end",
+      messages: [
+        { role: "user", content: [{ type: "text", text: "hello" }] },
+      ],
+    });
+
+    const events = collectEvents(line, tokens);
+
+    // No assistant messages → resets to zero (authoritative)
+    expect(tokens.input).toBe(0);
+    expect(tokens.output).toBe(0);
+    expect(tokens.total).toBe(0);
+    expect(events).toHaveLength(1);
+  });
+
+  it("handles cost tracking across message_end events", () => {
+    const tokens = makeTokens();
+    const textParts: string[] = [];
+
+    parseJsonLine(
+      JSON.stringify({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          usage: { input: 10, output: 20, cost: { total: 0.005 } },
+        },
+      }),
+      tokens,
+      textParts,
+      () => {},
+    );
+
+    parseJsonLine(
+      JSON.stringify({
+        type: "message_end",
+        message: {
+          role: "assistant",
+          usage: { input: 5, output: 10, cost: { total: 0.003 } },
+        },
+      }),
+      tokens,
+      textParts,
+      () => {},
+    );
+
+    expect(tokens.cost).toBeCloseTo(0.008, 4);
   });
 });

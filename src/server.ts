@@ -174,7 +174,8 @@ function renderDashboard(snap: OrchestratorSnapshot): string {
         <td>${formatDuration(r.elapsed_ms)}</td>
         <td><span class="badge event">${esc(r.last_event ?? "—")}</span></td>
         <td class="msg">${esc(truncate(r.last_message, 120))}</td>
-        <td class="num">${fmtNum(r.tokens.input)} / ${fmtNum(r.tokens.output)}</td>
+        <td class="num">${fmtNum(r.tokens.total)}</td>
+        <td class="num">$${((r.tokens as any).cost ?? 0).toFixed(4)}</td>
       </tr>`,
     )
     .join("\n");
@@ -298,7 +299,11 @@ function renderDashboard(snap: OrchestratorSnapshot): string {
     </div>
     <div class="stat">
       <div class="label">Total Tokens</div>
-      <div class="value">${fmtNum(snap.totals.input_tokens + snap.totals.output_tokens)}</div>
+      <div class="value">${fmtNum(snap.totals.total_tokens)}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Total Cost</div>
+      <div class="value">$${(snap.totals.total_cost ?? 0).toFixed(4)}</div>
     </div>
     <div class="stat">
       <div class="label">Uptime</div>
@@ -319,7 +324,8 @@ function renderDashboard(snap: OrchestratorSnapshot): string {
         <th>Elapsed</th>
         <th>Last Event</th>
         <th>Message</th>
-        <th>Tokens (in/out)</th>
+        <th>Tokens</th>
+        <th>Cost</th>
       </tr>
     </thead>
     <tbody>${runningRows}</tbody>
