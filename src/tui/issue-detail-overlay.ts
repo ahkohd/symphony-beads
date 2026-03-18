@@ -191,9 +191,7 @@ export class IssueDetailOverlay {
 
     // -- Metadata row: status, priority, type, owner --
     children.push(this.buildMetadata(issue));
-
-    // -- Separator --
-    children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
+    children.push(this.buildDivider());
 
     // -- Description --
     if (issue.description) {
@@ -203,13 +201,13 @@ export class IssueDetailOverlay {
 
     // -- PR Link --
     if (issue.pr_url) {
-      children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
+      children.push(this.buildDivider());
       children.push(this.buildPrLink(issue.pr_url));
     }
 
     // -- Comments --
     if (comments.length > 0) {
-      children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
+      children.push(this.buildDivider());
       children.push(
         Text({
           content: ` Comments (${comments.length})`,
@@ -224,7 +222,7 @@ export class IssueDetailOverlay {
 
     // -- Dependencies --
     if (issue.dependencies.length > 0) {
-      children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
+      children.push(this.buildDivider());
       children.push(
         Text({
           content: ` Dependencies (${issue.dependencies.length})`,
@@ -238,7 +236,7 @@ export class IssueDetailOverlay {
     }
 
     // -- Footer --
-    children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
+    children.push(this.buildDivider());
     children.push(
       Text({
         content: " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page",
@@ -335,6 +333,14 @@ export class IssueDetailOverlay {
       { paddingLeft: 1, paddingRight: 1, flexDirection: "column" },
       Text({ content: description, fg: COLORS.text, wrapMode: "word" }),
     );
+  }
+
+  private buildDivider(): VChild {
+    return Box({
+      height: 1,
+      width: "100%",
+      backgroundColor: COLORS.border,
+    });
   }
 
   private buildPrLink(url: string): VChild {
