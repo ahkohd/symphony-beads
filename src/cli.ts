@@ -5,6 +5,7 @@
 // Subcommands:
 //   start     Start the orchestrator daemon
 //   status    Show current orchestrator state
+//   dashboard TUI dashboard with live agent status
 //   validate  Validate WORKFLOW.md
 //   init      Initialize a new WORKFLOW.md
 //   instances List all running symphony instances
@@ -89,6 +90,9 @@ function parseArgs(argv: string[]): Args {
       case "--port":
         args.port = parseInt(argv[++i] ?? "", 10);
         if (isNaN(args.port) || args.port < 1) args.port = null;
+        break;
+      case "--host":
+        args.host = argv[++i] ?? "127.0.0.1";
         break;
       case "-f":
       case "--follow":
@@ -511,6 +515,44 @@ async function stopProcess(info: { pid: number }): Promise<{ pid: number; killed
   return { pid, killed: true, already_dead: false, signal: "SIGKILL" };
 }
 
+async function cmdDashboard(args: Args): Promise<void> {
+  if (!args.port) {
+    // Try to read port from workflow config
+    try {
+      const workflow = await loadWorkflow(args.workflow);
+      const serverPort = workflow.config.server?.port ?? null;
+      if (serverPort) {
+        args.port = serverPort;
+      }
+    } catch {
+      // Workflow not found — that's fine if --port is given
+    }
+  }
+
+  if (!args.port) {
+    if (args.json) {
+      console.log(
+        JSON.stringify({
+          error: "no_port",
+          message:
+            "No port specified. Use --port <port> or configure server.port in WORKFLOW.md",
+        }),
+      );
+    } else {
+      log.error(
+        "no port specified — use --port <port> or configure server.port in WORKFLOW.md",
+      );
+    }
+    process.exit(1);
+  }
+
+  const { startDashboard } = await import("./dashboard.tsx");
+  await startDashboard({
+    port: args.port,
+    host: args.host,
+  });
+}
+
 async function cmdDoctor(args: Args): Promise<void> {
   const report = await runDoctor(args.workflow);
 
@@ -668,6 +710,7 @@ Usage: symphony <command> [flags]
 Commands:
   start      Start the orchestrator daemon
   status     Show current issue status from beads
+  dashboard  TUI dashboard with live agent status
   validate   Validate WORKFLOW.md configuration
   init       Create a new WORKFLOW.md
   instances  List all running symphony instances
@@ -678,6 +721,8 @@ Commands:
 Flags:
   --json           Output as JSON
   --workflow PATH   Workflow file (default: WORKFLOW.md)
+  --port PORT       HTTP API port (for start/dashboard)
+  --host HOST       HTTP API host (default: 127.0.0.1)
   --verbose         Verbose output
   -h, --help        Show this help
   -v, --version     Show version
@@ -787,6 +832,9 @@ async function main(): Promise<void> {
       break;
     case "status":
       await cmdStatus(args);
+      break;
+    case "dashboard":
+      await cmdDashboard(args);
       break;
     case "validate":
       await cmdValidate(args);
