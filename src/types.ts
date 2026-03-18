@@ -79,6 +79,7 @@ export interface HooksConfig {
 
 export interface AgentConfig {
   max_concurrent: number;
+  max_concurrent_by_state: Record<string, number> | null;
   max_turns: number;
   max_retry_backoff_ms: number;
 }
@@ -141,6 +142,7 @@ export type AgentEvent =
   | { kind: "turn_completed"; message: string }
   | { kind: "turn_failed"; message: string }
   | { kind: "turn_timeout"; message: string }
+  | { kind: "token_update"; tokens: TokenCount }
   | { kind: "log"; message: string };
 
 // -- CLI ---------------------------------------------------------------------

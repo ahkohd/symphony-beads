@@ -276,6 +276,9 @@ export class Orchestrator {
       case "session_started":
         entry.session_id = event.session_id;
         break;
+      case "token_update":
+        entry.tokens = { ...event.tokens };
+        break;
       case "turn_completed":
       case "turn_failed":
       case "turn_timeout":
@@ -291,6 +294,9 @@ export class Orchestrator {
 
     const elapsed = (Date.now() - entry.started_at) / 1000;
     this.totals.ended_seconds += elapsed;
+    this.totals.input_tokens += entry.tokens.input;
+    this.totals.output_tokens += entry.tokens.output;
+    this.totals.total_tokens += entry.tokens.total;
     this.removeRunning(issueId);
 
     if (error) {
