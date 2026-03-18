@@ -41,9 +41,44 @@ const DEFAULT_PROMPT = `You are working on a Beads issue.
 Issue: {{ issue.identifier }}
 Title: {{ issue.title }}
 Description: {{ issue.description }}
+Priority: {{ issue.priority }}
+Labels: {{ issue.labels }}
 
-Implement the solution, then mark it done:
-  bd update {{ issue.identifier }} --status done
+## Workflow
+
+Follow these steps in order:
+
+### 1. Create a feature branch
+\`\`\`bash
+git checkout -b issue/{{ issue.identifier }}
+\`\`\`
+
+### 2. Implement the solution
+- Make the necessary code changes
+- Commit your work with clear, descriptive messages:
+  \`\`\`bash
+  git add -A
+  git commit -m "issue/{{ issue.identifier }}: <describe what changed>"
+  \`\`\`
+
+### 3. Push the branch
+\`\`\`bash
+git push origin HEAD
+\`\`\`
+
+### 4. Move the issue to review
+\`\`\`bash
+bd update {{ issue.identifier }} --status review
+\`\`\`
+
+### 5. Add a summary comment
+\`\`\`bash
+bd comment {{ issue.identifier }} "Summary of changes: <describe what was done and any notes for the reviewer>"
+\`\`\`
+
+**Important**: Do NOT mark the issue as done. Moving it to \`review\` hands it off
+to a human reviewer. The reviewer will either accept (move to done) or request
+rework (move back to open).
 `;
 
 // -- Public API --------------------------------------------------------------
@@ -113,13 +148,23 @@ function splitFrontMatter(content: string): { frontMatter: string | null; body: 
 function parseYaml(yaml: string): Record<string, Record<string, unknown>> {
   const result: Record<string, Record<string, unknown>> = {};
   let section: string | null = null;
+  const lines = yaml.split("\n");
+  let i = 0;
 
-  for (const line of yaml.split("\n")) {
+  while (i < lines.length) {
+    const line = lines[i]!;
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    if (!trimmed || trimmed.startsWith("#")) {
+      i++;
+      continue;
+    }
 
     const colon = trimmed.indexOf(":");
-    if (colon < 0) continue;
+    if (colon < 0) {
+      i++;
+      continue;
+    }
 
     const key = trimmed.slice(0, colon).trim();
     const raw = trimmed.slice(colon + 1).trim();
@@ -129,11 +174,70 @@ function parseYaml(yaml: string): Record<string, Record<string, unknown>> {
       if (!raw || raw.startsWith("#")) {
         section = key;
         if (!result[section]) result[section] = {};
-      } else {
-        // Top-level scalar — ignore (we only support sections)
       }
+      // else: Top-level scalar — ignore (we only support sections)
+      i++;
     } else if (section && result[section]) {
-      result[section]![key] = coerceValue(raw);
+      // Check for YAML literal block scalar (pipe syntax)
+      if (raw === "|" || raw === "|-" || raw === "|+") {
+        const chopMode = raw === "|-" ? "strip" : raw === "|+" ? "keep" : "clip";
+        const keyIndent = indent;
+        const blockLines: string[] = [];
+        let blockIndent: number | null = null;
+        i++;
+
+        while (i < lines.length) {
+          const bLine = lines[i]!;
+          const bTrimmed = bLine.trim();
+
+          // Empty/whitespace-only lines are preserved inside the block
+          if (!bTrimmed) {
+            blockLines.push("");
+            i++;
+            continue;
+          }
+
+          const bIndent = bLine.length - bLine.trimStart().length;
+
+          if (blockIndent === null) {
+            // First content line determines the block indent level
+            if (bIndent > keyIndent) {
+              blockIndent = bIndent;
+            } else {
+              break; // Not indented enough — empty block
+            }
+          }
+
+          if (bIndent < blockIndent) {
+            break; // Dedented — end of block
+          }
+
+          blockLines.push(bLine.slice(blockIndent));
+          i++;
+        }
+
+        // Trim trailing empty lines for clip/strip modes
+        if (chopMode !== "keep") {
+          while (blockLines.length > 0 && blockLines[blockLines.length - 1] === "") {
+            blockLines.pop();
+          }
+        }
+
+        let text: string;
+        if (chopMode === "strip") {
+          text = blockLines.join("\n");
+        } else {
+          // clip and keep both end with \n (keep preserves extra blanks above)
+          text = blockLines.length > 0 ? blockLines.join("\n") + "\n" : "";
+        }
+
+        result[section]![key] = text;
+      } else {
+        result[section]![key] = coerceValue(raw);
+        i++;
+      }
+    } else {
+      i++;
     }
   }
 
