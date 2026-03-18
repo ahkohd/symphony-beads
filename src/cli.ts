@@ -940,7 +940,7 @@ polling:
 hooks:
   after_create: |
     git clone --single-branch --branch master $REPO_URL . 2>/dev/null || true
-    echo "node_modules" >> .gitignore
+    grep -q "node_modules" .gitignore 2>/dev/null || echo "node_modules" >> .gitignore
     bun install 2>/dev/null || npm install 2>/dev/null || true
     cat >> AGENTS.md << 'AGENTS'
     # Guidelines

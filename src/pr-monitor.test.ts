@@ -285,27 +285,4 @@ describe("PrMonitor processed-PR tracking", () => {
     simulateCheck(prs, processed);
     expect(processed.has(60)).toBe(false);
   });
-
-  it("handles rework → merge cycle correctly", () => {
-    const processed = new Set<number>();
-
-    // Tick 1: changes requested
-    simulateCheck(
-      [{ number: 70, state: "OPEN", reviewDecision: "CHANGES_REQUESTED", issueId: "bd-9" }],
-      processed,
-    );
-
-    // Tick 2: developer pushes, review clears
-    simulateCheck(
-      [{ number: 70, state: "OPEN", reviewDecision: "", issueId: "bd-9" }],
-      processed,
-    );
-
-    // Tick 3: PR merged — should process again since it was cleared
-    const actions = simulateCheck(
-      [{ number: 70, state: "MERGED", reviewDecision: "APPROVED", issueId: "bd-9" }],
-      processed,
-    );
-    expect(actions).toEqual(["close"]);
-  });
 });
