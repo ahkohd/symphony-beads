@@ -19,7 +19,6 @@ hooks:
   after_create: |
     gh repo clone $SYMPHONY_REPO . || true
 
-    grep -q "node_modules" .gitignore 2>/dev/null || echo "node_modules" >> .gitignore
     bun install 2>/dev/null || true
     cat >> AGENTS.md << 'AGENTS'
 
