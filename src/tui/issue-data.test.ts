@@ -2,32 +2,29 @@
 // Issue data fetching tests — unit tests for issue-data.ts
 // ---------------------------------------------------------------------------
 
-import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
-import {
-  fetchIssueDetail,
-  fetchIssueComments,
-  fetchAgentSession,
-  type IssueDetail,
-  type IssueComment,
-  type AgentSessionInfo,
-} from "./issue-data.ts";
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
-// We mock the exec module to control subprocess output
-const mockExec = mock(async () => ({ code: 0, stdout: "", stderr: "" }));
+// Create a mock exec function that we can control per-test
+const mockExec = mock(async (_cmd: string[], _opts?: unknown) => ({
+  code: 0,
+  stdout: "",
+  stderr: "",
+}));
 
-// Patch exec at module level
-import * as execModule from "../exec.ts";
-const originalExec = execModule.exec;
+// Use Bun's mock.module to intercept the exec import
+mock.module("../exec.ts", () => ({
+  exec: (...args: unknown[]) => mockExec(...(args as [string[], unknown?])),
+}));
+
+// Import AFTER mocking so the mock is in place
+const { fetchIssueDetail, fetchIssueComments, fetchAgentSession } = await import(
+  "./issue-data.ts"
+);
 
 beforeEach(() => {
   mockExec.mockReset();
-  // @ts-ignore — patching for test
-  (execModule as any).exec = mockExec;
-});
-
-afterEach(() => {
-  // @ts-ignore — restore
-  (execModule as any).exec = originalExec;
+  // Restore default implementation
+  mockExec.mockResolvedValue({ code: 0, stdout: "", stderr: "" });
 });
 
 // -- fetchIssueDetail --------------------------------------------------------
@@ -75,7 +72,7 @@ describe("fetchIssueDetail", () => {
     expect(result!.issue_type).toBe("bug");
     expect(result!.owner).toBe("agent@test");
     expect(result!.dependencies).toHaveLength(1);
-    expect(result!.dependencies[0].id).toBe("dep-1");
+    expect(result!.dependencies[0]!.id).toBe("dep-1");
     expect(result!.pr_url).toBeNull();
   });
 
@@ -197,11 +194,11 @@ describe("fetchIssueComments", () => {
 
     const result = await fetchIssueComments("test-123");
     expect(result).toHaveLength(2);
-    expect(result[0].author).toBe("Agent");
-    expect(result[0].body).toBe("PR pushed. Summary: did the thing.");
-    expect(result[0].created_at).toBe("2026-03-18T04:15:04Z");
-    expect(result[1].author).toBe("Human");
-    expect(result[1].body).toBe("Looks good, merging.");
+    expect(result[0]!.author).toBe("Agent");
+    expect(result[0]!.body).toBe("PR pushed. Summary: did the thing.");
+    expect(result[0]!.created_at).toBe("2026-03-18T04:15:04Z");
+    expect(result[1]!.author).toBe("Human");
+    expect(result[1]!.body).toBe("Looks good, merging.");
   });
 
   test("falls back to body field when text is missing", async () => {
@@ -222,7 +219,7 @@ describe("fetchIssueComments", () => {
 
     const result = await fetchIssueComments("test-123");
     expect(result).toHaveLength(1);
-    expect(result[0].body).toBe("Comment with body field");
+    expect(result[0]!.body).toBe("Comment with body field");
   });
 
   test("falls back to content field", async () => {
@@ -243,7 +240,7 @@ describe("fetchIssueComments", () => {
 
     const result = await fetchIssueComments("test-123");
     expect(result).toHaveLength(1);
-    expect(result[0].body).toBe("Comment with content field");
+    expect(result[0]!.body).toBe("Comment with content field");
   });
 
   test("uses created_by as fallback for author", async () => {
@@ -264,7 +261,7 @@ describe("fetchIssueComments", () => {
 
     const result = await fetchIssueComments("test-123");
     expect(result).toHaveLength(1);
-    expect(result[0].author).toBe("SystemUser");
+    expect(result[0]!.author).toBe("SystemUser");
   });
 
   test("returns empty array on command failure", async () => {

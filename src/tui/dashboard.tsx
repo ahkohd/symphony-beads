@@ -18,18 +18,25 @@
 // Color coding: green=running, yellow=retrying, blue=review, gray=completed.
 // ---------------------------------------------------------------------------
 
-import { createCliRenderer } from "@opentui/core";
+import { createCliRenderer, type CliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard } from "@opentui/react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { OrchestratorSnapshot } from "../orchestrator.ts";
 import { OrchestratorClient } from "./live-client.ts";
+import { IssueDetailOverlay } from "./issue-detail-overlay.ts";
 import { exec } from "../exec.ts";
 
 // -- Types -------------------------------------------------------------------
 
 interface DashboardProps {
   client: OrchestratorClient;
+  renderer: CliRenderer;
   refreshMs?: number;
+}
+
+interface SelectableItem {
+  issueId: string;
+  section: "running" | "retrying" | "review";
 }
 
 interface EventLogEntry {
@@ -227,10 +234,10 @@ function SectionTitle({
 
 function RunningSection({
   snap,
-  selectedId,
+  selectedId = null,
 }: {
   snap: OrchestratorSnapshot | null;
-  selectedId: string | null;
+  selectedId?: string | null;
 }) {
   const running = snap?.running ?? [];
 
@@ -286,7 +293,7 @@ function RunningSection({
   );
 }
 
-function RetrySection({ snap }: { snap: OrchestratorSnapshot | null }) {
+function RetrySection({ snap, selectedId = null }: { snap: OrchestratorSnapshot | null; selectedId?: string | null }) {
   const retrying = snap?.retrying ?? [];
 
   if (retrying.length === 0) {
@@ -317,7 +324,7 @@ function RetrySection({ snap }: { snap: OrchestratorSnapshot | null }) {
   );
 }
 
-function ReviewSection({ reviews }: { reviews: ReviewItem[] }) {
+function ReviewSection({ reviews, selectedId = null }: { reviews: ReviewItem[]; selectedId?: string | null }) {
   if (reviews.length === 0) {
     return (
       <box style={{ paddingLeft: 2, height: 1 }}>
@@ -384,7 +391,7 @@ function EventLog({ events }: { events: EventLogEntry[] }) {
   );
 }
 
-function Footer() {
+function Footer({ hasItems = false }: { hasItems?: boolean }) {
   return (
     <box
       style={{
@@ -402,7 +409,13 @@ function Footer() {
         <span fg={COLORS.textDim}>r</span>
         <span fg={COLORS.text}> refresh </span>
         <span fg={COLORS.textDim}>↑↓</span>
-        <span fg={COLORS.text}> scroll</span>
+        <span fg={COLORS.text}> select</span>
+        {hasItems ? (
+          <>
+            <span fg={COLORS.textDim}> Enter</span>
+            <span fg={COLORS.text}> detail</span>
+          </>
+        ) : null}
       </text>
       <text fg={COLORS.textDim}>auto-refresh 2s</text>
     </box>
@@ -625,7 +638,7 @@ function DashboardApp({ client, renderer, refreshMs = 2000 }: DashboardProps) {
         }}
       >
         <Header snap={null} source="static" />
-        <StaticSummary reviews={reviews} selectedId={selectedIssueId} />
+        <StaticSummary reviews={reviews} counts={staticCounts} selectedId={selectedIssueId} />
         <Footer hasItems={hasItems} />
       </box>
     );

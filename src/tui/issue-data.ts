@@ -109,7 +109,7 @@ export async function fetchIssueComments(issueId: string): Promise<IssueComment[
     return parsed.map((c: Record<string, unknown>) => ({
       id: (c.id as string | undefined) ?? undefined,
       author: (c.author as string | undefined) ?? (c.created_by as string | undefined) ?? "unknown",
-      body: (c.body as string | undefined) ?? (c.content as string | undefined) ?? "",
+      body: (c.text as string | undefined) ?? (c.body as string | undefined) ?? (c.content as string | undefined) ?? "",
       created_at: (c.created_at as string | undefined) ?? "",
     }));
   } catch {
