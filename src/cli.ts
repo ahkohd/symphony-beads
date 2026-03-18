@@ -8,6 +8,7 @@
 //   validate  Validate WORKFLOW.md
 //   init      Initialize a new WORKFLOW.md
 //   instances List all running symphony instances
+//   doctor    Verify dependencies, config, and runtime state
 //
 // Global flags:
 //   --json          JSON output
@@ -25,6 +26,7 @@ import { Orchestrator } from "./orchestrator.ts";
 import { WorkflowWatcher } from "./watcher.ts";
 import { log, setJsonMode, isJsonMode, setLogFile } from "./log.ts";
 import { PrMonitor } from "./pr-monitor.ts";
+import { runDoctor } from "./doctor.ts";
 import {
   acquireLock,
   releaseLock,
@@ -355,6 +357,32 @@ async function cmdInstances(args: Args): Promise<void> {
   }
 }
 
+async function cmdDoctor(args: Args): Promise<void> {
+  const report = await runDoctor(args.workflow);
+
+  if (args.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log("");
+    const maxName = Math.max(...report.checks.map((c) => c.name.length));
+    for (const check of report.checks) {
+      const status = check.ok ? "ok  " : "FAIL";
+      const pad = check.name.padEnd(maxName);
+      console.log(`  ${pad}  ${status}  ${check.detail}`);
+    }
+    console.log("");
+    if (report.ok) {
+      console.log("  All checks passed.");
+    } else {
+      const failed = report.checks.filter((c) => !c.ok).length;
+      console.log(`  ${failed} check(s) failed.`);
+    }
+    console.log("");
+  }
+
+  if (!report.ok) process.exit(1);
+}
+
 // -- Helpers -----------------------------------------------------------------
 
 async function loadWorkflow(path: string) {
@@ -383,6 +411,7 @@ Commands:
   validate   Validate WORKFLOW.md configuration
   init       Create a new WORKFLOW.md
   instances  List all running symphony instances
+  doctor     Verify dependencies, config, and runtime state
 
 Flags:
   --json           Output as JSON
@@ -494,6 +523,9 @@ async function main(): Promise<void> {
       break;
     case "instances":
       await cmdInstances(args);
+      break;
+    case "doctor":
+      await cmdDoctor(args);
       break;
     case "":
       error("no command specified");
