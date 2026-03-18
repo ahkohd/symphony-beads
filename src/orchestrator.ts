@@ -167,6 +167,7 @@ export class Orchestrator {
     for (const issue of sorted) {
       if (!this.slotsAvailable()) break;
       if (!this.eligible(issue)) continue;
+      if (!this.slotsAvailable(issue.state)) continue;
       this.dispatch(issue, 0);
       dispatched++;
     }
@@ -353,7 +354,7 @@ export class Orchestrator {
       return;
     }
 
-    if (!this.slotsAvailable()) {
+    if (!this.slotsAvailable(issue.state)) {
       this.scheduleRetry(issueId, entry.identifier, entry.attempt + 1, "no slots available");
       return;
     }
@@ -368,8 +369,21 @@ export class Orchestrator {
     // Keep claimed — retry or continuation may re-dispatch
   }
 
-  private slotsAvailable(): boolean {
-    return this.running.size < this.config.agent.max_concurrent;
+  private slotsAvailable(state?: string): boolean {
+    if (this.running.size >= this.config.agent.max_concurrent) return false;
+
+    if (state && this.config.agent.max_concurrent_by_state) {
+      const limit = this.config.agent.max_concurrent_by_state[state];
+      if (limit !== undefined) {
+        let count = 0;
+        for (const entry of this.running.values()) {
+          if (entry.issue.state === state) count++;
+        }
+        if (count >= limit) return false;
+      }
+    }
+
+    return true;
   }
 
   private sortForDispatch(issues: Issue[]): Issue[] {

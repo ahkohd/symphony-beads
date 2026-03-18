@@ -11,11 +11,15 @@ import { log } from "./log.ts";
 export class WorkspaceManager {
   private root: string;
   private projectPath: string;
+  private repo: string | null;
+  private remote: string;
   private hooks: ServiceConfig["hooks"];
 
   constructor(config: ServiceConfig) {
     this.root = resolve(config.workspace.root);
     this.projectPath = resolve(config.tracker.project_path);
+    this.repo = config.workspace.repo;
+    this.remote = config.workspace.remote;
     this.hooks = config.hooks;
   }
 
@@ -25,10 +29,12 @@ export class WorkspaceManager {
     const path = join(this.root, key);
     this.assertInRoot(path);
 
-    const hookEnv = {
+    const hookEnv: Record<string, string> = {
       SYMPHONY_ISSUE_ID: identifier,
       SYMPHONY_PROJECT_PATH: this.projectPath,
+      SYMPHONY_REMOTE: this.remote,
     };
+    if (this.repo) hookEnv.SYMPHONY_REPO = this.repo;
 
     let created = false;
     try {
@@ -79,18 +85,14 @@ export class WorkspaceManager {
   /** Run before_run hook. Returns false on failure. */
   async beforeRun(path: string, identifier?: string): Promise<boolean> {
     if (!this.hooks.before_run) return true;
-    const env = identifier
-      ? { SYMPHONY_ISSUE_ID: identifier, SYMPHONY_PROJECT_PATH: this.projectPath }
-      : undefined;
+    const env = identifier ? this.makeEnv(identifier) : undefined;
     return this.runHook("before_run", path, this.hooks.before_run, env);
   }
 
   /** Run after_run hook. Failure is logged and ignored. */
   async afterRun(path: string, identifier?: string): Promise<void> {
     if (!this.hooks.after_run) return;
-    const env = identifier
-      ? { SYMPHONY_ISSUE_ID: identifier, SYMPHONY_PROJECT_PATH: this.projectPath }
-      : undefined;
+    const env = identifier ? this.makeEnv(identifier) : undefined;
     await this.runHook("after_run", path, this.hooks.after_run, env);
   }
 
@@ -100,6 +102,16 @@ export class WorkspaceManager {
   }
 
   // -- Private ---------------------------------------------------------------
+
+  private makeEnv(identifier: string): Record<string, string> {
+    const env: Record<string, string> = {
+      SYMPHONY_ISSUE_ID: identifier,
+      SYMPHONY_PROJECT_PATH: this.projectPath,
+      SYMPHONY_REMOTE: this.remote,
+    };
+    if (this.repo) env.SYMPHONY_REPO = this.repo;
+    return env;
+  }
 
   private assertInRoot(path: string): void {
     const abs = resolve(path);

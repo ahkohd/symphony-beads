@@ -67,6 +67,8 @@ export interface PollingConfig {
 
 export interface WorkspaceConfig {
   root: string;
+  repo: string | null;
+  remote: string;
 }
 
 export interface HooksConfig {

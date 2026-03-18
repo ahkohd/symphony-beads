@@ -225,7 +225,13 @@ function SectionTitle({
   );
 }
 
-function RunningSection({ snap }: { snap: OrchestratorSnapshot | null }) {
+function RunningSection({
+  snap,
+  selectedId,
+}: {
+  snap: OrchestratorSnapshot | null;
+  selectedId: string | null;
+}) {
   const running = snap?.running ?? [];
 
   if (running.length === 0) {
@@ -238,34 +244,44 @@ function RunningSection({ snap }: { snap: OrchestratorSnapshot | null }) {
 
   return (
     <box style={{ flexDirection: "column" }}>
-      {running.map((r) => (
-        <box
-          key={r.issue_id}
-          style={{
-            flexDirection: "row",
-            paddingLeft: 2,
-            height: 2,
-            borderStyle: "single",
-            border: true,
-            borderColor: COLORS.border,
-            backgroundColor: COLORS.surface,
-            marginLeft: 1,
-            marginRight: 1,
-          }}
-        >
-          <text>
-            <span fg={COLORS.green}>▶ </span>
-            <span fg={COLORS.blue}>{pad(r.issue_identifier, 22)}</span>
-            <span fg={COLORS.text}>
-              {pad(truncStr(r.title, 30), 32)}
-            </span>
-            <span fg={COLORS.textDim}>
-              {pad(formatElapsed(r.elapsed_ms), 10)}
-            </span>
-            <span fg={COLORS.yellow}>{r.last_event ?? "—"}</span>
-          </text>
-        </box>
-      ))}
+      {running.map((r) => {
+        const isSelected = selectedId === r.issue_id;
+        return (
+          <box
+            key={r.issue_id}
+            style={{
+              flexDirection: "row",
+              paddingLeft: 2,
+              height: 2,
+              borderStyle: "single",
+              border: true,
+              borderColor: isSelected ? COLORS.accent : COLORS.border,
+              backgroundColor: isSelected ? COLORS.surface : COLORS.bg,
+              marginLeft: 1,
+              marginRight: 1,
+            }}
+          >
+            <text>
+              <span fg={isSelected ? COLORS.accent : COLORS.green}>
+                {isSelected ? "▸ " : "▶ "}
+              </span>
+              <span fg={COLORS.blue}>{pad(r.issue_identifier, 22)}</span>
+              <span fg={COLORS.text}>
+                {pad(truncStr(r.title, 30), 32)}
+              </span>
+              <span fg={COLORS.textDim}>
+                {pad(formatElapsed(r.elapsed_ms), 10)}
+              </span>
+              {r.tokens.total > 0 ? (
+                <span fg={COLORS.accent}>{pad(formatTokens(r.tokens.input) + "/" + formatTokens(r.tokens.output), 14)}</span>
+              ) : (
+                <span fg={COLORS.textDim}>{pad("—", 14)}</span>
+              )}
+              <span fg={COLORS.yellow}>{r.last_event ?? "—"}</span>
+            </text>
+          </box>
+        );
+      })}
     </box>
   );
 }
@@ -398,9 +414,11 @@ function Footer() {
 function StaticSummary({
   reviews,
   counts,
+  selectedId,
 }: {
   reviews: ReviewItem[];
   counts: StaticCounts;
+  selectedId: string | null;
 }) {
   const total = counts.open + counts.in_progress + counts.review + counts.closed;
   return (
@@ -428,14 +446,40 @@ function StaticSummary({
       </box>
 
       <SectionTitle title="Review" color={COLORS.blue} count={reviews.length} />
-      <ReviewSection reviews={reviews} />
+      <ReviewSection reviews={reviews} selectedId={selectedId} />
     </box>
   );
 }
 
 // -- Main App ----------------------------------------------------------------
 
-function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
+/**
+ * Build a flat list of selectable items from current dashboard state.
+ * Order: running → retrying → review (matches visual layout).
+ */
+function buildSelectableItems(
+  snap: OrchestratorSnapshot | null,
+  reviews: ReviewItem[],
+): SelectableItem[] {
+  const items: SelectableItem[] = [];
+
+  if (snap) {
+    for (const r of snap.running) {
+      items.push({ issueId: r.issue_id, section: "running" });
+    }
+    for (const r of snap.retrying) {
+      items.push({ issueId: r.issue_id, section: "retrying" });
+    }
+  }
+
+  for (const r of reviews) {
+    items.push({ issueId: r.id, section: "review" });
+  }
+
+  return items;
+}
+
+function DashboardApp({ client, renderer, refreshMs = 2000 }: DashboardProps) {
   const [snap, setSnap] = useState<OrchestratorSnapshot | null>(null);
   const [events, setEvents] = useState<EventLogEntry[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
@@ -446,6 +490,10 @@ function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
     review: 0,
     closed: 0,
   });
+
+  // Selection cursor for navigating dashboard items
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [overlayActive, setOverlayActive] = useState(false);
 
   // Track which issue events we've already logged to avoid duplicates
   const seenEventsRef = useRef(new Map<string, string>());
@@ -513,14 +561,56 @@ function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
     return () => clearInterval(interval);
   }, [refresh, refreshMs]);
 
+  // Build selectable items list
+  const selectableItems = buildSelectableItems(snap, reviews);
+  const hasItems = selectableItems.length > 0;
+
+  // Clamp selection when items change
+  useEffect(() => {
+    setSelectedIndex((prev) =>
+      selectableItems.length > 0
+        ? Math.min(prev, selectableItems.length - 1)
+        : 0,
+    );
+  }, [selectableItems.length]);
+
+  // Get the currently selected item's issue ID (for highlighting)
+  const selectedItem = hasItems ? selectableItems[selectedIndex] ?? null : null;
+  const selectedIssueId = selectedItem?.issueId ?? null;
+
+  // Show detail overlay for the selected item
+  const handleShowDetail = useCallback(async () => {
+    if (!selectedItem) return;
+    setOverlayActive(true);
+    const overlay = new IssueDetailOverlay(renderer);
+    overlay.onClose(() => {
+      setOverlayActive(false);
+    });
+    const apiBase = client.getApiBase() ?? undefined;
+    await overlay.show(selectedItem.issueId, apiBase);
+  }, [selectedItem, renderer, client]);
+
   // Keyboard handling
   useKeyboard((key) => {
+    if (overlayActive) return;
+
     if (key.name === "q" || key.name === "escape") {
       process.exit(0);
     }
     if (key.name === "r") {
       // Manual refresh — also try to trigger orchestrator poll
       client.triggerRefresh().then(() => refresh());
+    }
+    if (key.name === "up" && hasItems) {
+      setSelectedIndex((prev) => Math.max(0, prev - 1));
+    }
+    if (key.name === "down" && hasItems) {
+      setSelectedIndex((prev) =>
+        Math.min(selectableItems.length - 1, prev + 1),
+      );
+    }
+    if ((key.name === "return" || key.name === "enter") && hasItems) {
+      handleShowDetail();
     }
   });
 
@@ -535,8 +625,8 @@ function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
         }}
       >
         <Header snap={null} source="static" />
-        <StaticSummary reviews={reviews} counts={staticCounts} />
-        <Footer />
+        <StaticSummary reviews={reviews} selectedId={selectedIssueId} />
+        <Footer hasItems={hasItems} />
       </box>
     );
   }
@@ -556,21 +646,21 @@ function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
         color={COLORS.green}
         count={snap?.running.length ?? 0}
       />
-      <RunningSection snap={snap} />
+      <RunningSection snap={snap} selectedId={selectedIssueId} />
 
       <SectionTitle
         title="Retrying"
         color={COLORS.yellow}
         count={snap?.retrying.length ?? 0}
       />
-      <RetrySection snap={snap} />
+      <RetrySection snap={snap} selectedId={selectedIssueId} />
 
       <SectionTitle
         title="Review"
         color={COLORS.blue}
         count={reviews.length}
       />
-      <ReviewSection reviews={reviews} />
+      <ReviewSection reviews={reviews} selectedId={selectedIssueId} />
 
       <SectionTitle
         title="Event Log"
@@ -579,7 +669,7 @@ function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
       />
       <EventLog events={events} />
 
-      <Footer />
+      <Footer hasItems={hasItems} />
     </box>
   );
 }
@@ -600,6 +690,7 @@ export async function launchDashboard(opts?: {
   createRoot(renderer).render(
     <DashboardApp
       client={client}
+      renderer={renderer}
       refreshMs={opts?.refreshMs ?? 2000}
     />,
   );

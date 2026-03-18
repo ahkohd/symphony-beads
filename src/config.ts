@@ -12,7 +12,7 @@ const DEFAULTS: ServiceConfig = {
     terminal_states: ["closed", "cancelled", "duplicate"],
   },
   polling: { interval_ms: 30_000 },
-  workspace: { root: "./workspaces" },
+  workspace: { root: "./workspaces", repo: null, remote: "origin" },
   hooks: {
     after_create: null,
     before_run: null,
@@ -22,6 +22,7 @@ const DEFAULTS: ServiceConfig = {
   },
   agent: {
     max_concurrent: 5,
+    max_concurrent_by_state: null,
     max_turns: 20,
     max_retry_backoff_ms: 300_000,
   },
@@ -125,6 +126,19 @@ export function validateConfig(config: ServiceConfig): string[] {
   }
   if (config.polling.interval_ms < 1000) {
     errors.push("polling.interval_ms must be >= 1000");
+  }
+
+  if (config.agent.max_concurrent_by_state) {
+    for (const [state, limit] of Object.entries(config.agent.max_concurrent_by_state)) {
+      if (typeof limit !== "number") continue;
+      if (limit < 1) {
+        errors.push(`max_concurrent_by_state.${state} must be >= 1`);
+      } else if (limit > config.agent.max_concurrent) {
+        errors.push(
+          `max_concurrent_by_state.${state} (${limit}) exceeds agent.max_concurrent (${config.agent.max_concurrent})`,
+        );
+      }
+    }
   }
 
   return errors;

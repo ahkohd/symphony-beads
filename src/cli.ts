@@ -379,8 +379,47 @@ async function cmdStartForeground(
 }
 
 async function cmdStatus(args: Args): Promise<void> {
-  // Status reads from a running orchestrator. For now, query beads directly.
   const workflow = await loadWorkflow(args.workflow);
+  const projectDir = resolve(dirname(args.workflow));
+
+  // Try to fetch live orchestrator state (includes token counts)
+  const { OrchestratorClient } = await import("./tui/live-client.ts");
+  const client = new OrchestratorClient(projectDir);
+  const liveSnap = await client.fetchLiveState();
+
+  if (liveSnap) {
+    // Live orchestrator is running — show rich status with tokens
+    if (args.json) {
+      console.log(JSON.stringify(liveSnap, null, 2));
+    } else {
+      const c = liveSnap.counts;
+      const t = liveSnap.totals;
+      console.log(`  Running: ${c.running}  Retrying: ${c.retrying}  Completed: ${c.completed}  Claimed: ${c.claimed}`);
+      console.log(`  Tokens:  ${fmtTokens(t.input_tokens)} in / ${fmtTokens(t.output_tokens)} out (${fmtTokens(t.total_tokens)} total)`);
+      console.log(`  Uptime:  ${fmtDuration(t.seconds_running * 1000)}`);
+      console.log("");
+
+      if (liveSnap.running.length > 0) {
+        console.log("  Running agents:");
+        for (const r of liveSnap.running) {
+          const tok = r.tokens.total > 0 ? ` [${fmtTokens(r.tokens.input)}/${fmtTokens(r.tokens.output)} tok]` : "";
+          console.log(`    ${r.issue_identifier}  [${r.state}]  ${fmtDuration(r.elapsed_ms)}${tok}  ${r.title}`);
+        }
+        console.log("");
+      }
+
+      if (liveSnap.retrying.length > 0) {
+        console.log("  Retrying:");
+        for (const r of liveSnap.retrying) {
+          console.log(`    ${r.identifier}  attempt ${r.attempt}  ${r.error ?? "continuation"}`);
+        }
+        console.log("");
+      }
+    }
+    return;
+  }
+
+  // Fallback: no orchestrator running — query beads directly
   const tracker = new BeadsTracker(workflow.config);
   const candidates = await tracker.fetchCandidates();
   const terminalIds = await tracker.fetchTerminalIds();
@@ -399,7 +438,7 @@ async function cmdStatus(args: Args): Promise<void> {
   if (args.json) {
     console.log(JSON.stringify(output, null, 2));
   } else {
-    log.info("issue status", { candidates: output.candidates, terminal: output.terminal });
+    log.info("issue status (static — no orchestrator running)", { candidates: output.candidates, terminal: output.terminal });
     for (const issue of output.issues) {
       console.log(`  ${issue.id}  P${issue.priority ?? "-"}  [${issue.state}]  ${issue.title}`);
     }
@@ -407,6 +446,21 @@ async function cmdStatus(args: Args): Promise<void> {
       console.log("  (no active issues)");
     }
   }
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
+  return String(n);
+}
+
+function fmtDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
 }
 
 async function cmdValidate(args: Args): Promise<void> {
@@ -869,6 +923,8 @@ tracker:
   project_path: "."
 workspace:
   root: ./workspaces
+  repo: $SYMPHONY_REPO
+  remote: origin
 agent:
   max_concurrent: 5
   max_turns: 20
@@ -892,12 +948,12 @@ hooks:
     - Use git to commit and push your changes when done.
     AGENTS
   before_run: |
-    git fetch origin master 2>/dev/null || true
-    git fetch origin issue/$SYMPHONY_ISSUE_ID 2>/dev/null || true
-    if git rev-parse --verify origin/issue/$SYMPHONY_ISSUE_ID >/dev/null 2>&1; then
-      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/issue/$SYMPHONY_ISSUE_ID
+    DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/$SYMPHONY_REMOTE/HEAD 2>/dev/null | sed "s|refs/remotes/$SYMPHONY_REMOTE/||" || echo "master")
+    git fetch $SYMPHONY_REMOTE $DEFAULT_BRANCH 2>/dev/null || true
+    git fetch $SYMPHONY_REMOTE issue/$SYMPHONY_ISSUE_ID 2>/dev/null || true
+      git checkout -B issue/$SYMPHONY_ISSUE_ID $SYMPHONY_REMOTE/issue/$SYMPHONY_ISSUE_ID
     else
-      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/master
+      git checkout -B issue/$SYMPHONY_ISSUE_ID $SYMPHONY_REMOTE/$DEFAULT_BRANCH
     fi
     git clean -fd 2>/dev/null || true
 log:

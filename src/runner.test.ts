@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveModel, injectJsonMode, parseJsonLine } from "./runner.ts";
+import { resolveModel, injectJsonMode, parseJsonLine, isPiCommand } from "./runner.ts";
 import { parseWorkflow } from "./config.ts";
 import type { Issue, AgentEvent, TokenCount } from "./types.ts";
 
@@ -290,5 +290,239 @@ Prompt.`);
     });
     const model = resolveModel(issue, wf.config.runner.models);
     expect(model).toBe("claude-opus-4-6");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isPiCommand — detect pi runner binary
+// ---------------------------------------------------------------------------
+
+describe("isPiCommand", () => {
+  it("returns true for bare 'pi'", () => {
+    expect(isPiCommand(["pi", "--no-session"])).toBe(true);
+  });
+
+  it("returns true for absolute path to pi", () => {
+    expect(isPiCommand(["/usr/local/bin/pi", "--no-session"])).toBe(true);
+  });
+
+  it("returns true for relative path to pi", () => {
+    expect(isPiCommand(["./node_modules/.bin/pi"])).toBe(true);
+  });
+
+  it("returns false for non-pi commands", () => {
+    expect(isPiCommand(["claude", "--no-session"])).toBe(false);
+    expect(isPiCommand(["aider", "--yes"])).toBe(false);
+    expect(isPiCommand(["bash", "-c", "echo hi"])).toBe(false);
+  });
+
+  it("returns false for empty command", () => {
+    expect(isPiCommand([])).toBe(false);
+  });
+
+  it("returns false for command containing pi as a substring", () => {
+    expect(isPiCommand(["pipeline"])).toBe(false);
+    expect(isPiCommand(["api-runner"])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// injectJsonMode — insert --mode json into command array
+// ---------------------------------------------------------------------------
+
+describe("injectJsonMode", () => {
+  it("inserts --mode json after the binary", () => {
+    expect(injectJsonMode(["pi", "--no-session"])).toEqual([
+      "pi", "--mode", "json", "--no-session",
+    ]);
+  });
+
+  it("works with single-element command", () => {
+    expect(injectJsonMode(["pi"])).toEqual(["pi", "--mode", "json"]);
+  });
+
+  it("preserves all arguments", () => {
+    expect(injectJsonMode(["pi", "--no-session", "--model", "claude-sonnet"])).toEqual([
+      "pi", "--mode", "json", "--no-session", "--model", "claude-sonnet",
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseJsonLine — token extraction from pi --mode json events
+// ---------------------------------------------------------------------------
+
+describe("parseJsonLine", () => {
+  function makeTokens(): TokenCount {
+    return { input: 0, output: 0, total: 0 };
+  }
+
+  function collectEvents(
+    line: string,
+    tokens?: TokenCount,
+    textParts?: string[],
+  ): AgentEvent[] {
+    const events: AgentEvent[] = [];
+    const tok = tokens ?? makeTokens();
+    const parts = textParts ?? [];
+    parseJsonLine(line, tok, parts, (ev) => events.push(ev));
+    return events;
+  }
+
+  it("extracts token usage from message_end event", () => {
+    const tokens = makeTokens();
+    const line = JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        usage: { input: 1500, output: 300 },
+      },
+    });
+
+    const events = collectEvents(line, tokens);
+
+    expect(tokens.input).toBe(1500);
+    expect(tokens.output).toBe(300);
+    expect(tokens.total).toBe(1800);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.kind).toBe("token_update");
+    if (events[0]!.kind === "token_update") {
+      expect(events[0]!.tokens).toEqual({ input: 1500, output: 300, total: 1800 });
+    }
+  });
+
+  it("accumulates tokens across multiple message_end events", () => {
+    const tokens = makeTokens();
+    const textParts: string[] = [];
+
+    const line1 = JSON.stringify({
+      type: "message_end",
+      message: { role: "assistant", usage: { input: 1000, output: 200 } },
+    });
+    const line2 = JSON.stringify({
+      type: "message_end",
+      message: { role: "assistant", usage: { input: 500, output: 100 } },
+    });
+
+    parseJsonLine(line1, tokens, textParts, () => {});
+    parseJsonLine(line2, tokens, textParts, () => {});
+
+    expect(tokens.input).toBe(1500);
+    expect(tokens.output).toBe(300);
+    expect(tokens.total).toBe(1800);
+  });
+
+  it("extracts text from turn_end events", () => {
+    const textParts: string[] = [];
+    const line = JSON.stringify({
+      type: "turn_end",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "I made the changes." },
+          { type: "tool_use", id: "t1" },
+          { type: "text", text: "All done." },
+        ],
+      },
+    });
+
+    collectEvents(line, undefined, textParts);
+
+    expect(textParts).toEqual(["I made the changes.", "All done."]);
+  });
+
+  it("ignores non-assistant message_end events", () => {
+    const tokens = makeTokens();
+    const line = JSON.stringify({
+      type: "message_end",
+      message: { role: "user", usage: { input: 500, output: 100 } },
+    });
+
+    const events = collectEvents(line, tokens);
+    expect(tokens.total).toBe(0);
+    expect(events).toHaveLength(0);
+  });
+
+  it("ignores non-JSON lines gracefully", () => {
+    const tokens = makeTokens();
+    const events = collectEvents("this is not json", tokens);
+    expect(tokens.total).toBe(0);
+    expect(events).toHaveLength(0);
+  });
+
+  it("ignores events without a type field", () => {
+    const tokens = makeTokens();
+    const events = collectEvents(JSON.stringify({ foo: "bar" }), tokens);
+    expect(events).toHaveLength(0);
+  });
+
+  it("handles session_end event with authoritative totals", () => {
+    const tokens = makeTokens();
+    // Simulate some accumulated tokens from message_end
+    tokens.input = 1000;
+    tokens.output = 200;
+    tokens.total = 1200;
+
+    // session_end carries authoritative session totals (replaces accumulated)
+    const line = JSON.stringify({
+      type: "session_end",
+      usage: { input_tokens: 2500, output_tokens: 500 },
+    });
+
+    const events = collectEvents(line, tokens);
+
+    // session_end replaces accumulated values
+    expect(tokens.input).toBe(2500);
+    expect(tokens.output).toBe(500);
+    expect(tokens.total).toBe(3000);
+    expect(events).toHaveLength(1);
+    if (events[0]!.kind === "token_update") {
+      expect(events[0]!.tokens).toEqual({ input: 2500, output: 500, total: 3000 });
+    }
+  });
+
+  it("handles usage_summary event", () => {
+    const tokens = makeTokens();
+    const line = JSON.stringify({
+      type: "usage_summary",
+      usage: { input_tokens: 5000, output_tokens: 1200 },
+    });
+
+    const events = collectEvents(line, tokens);
+
+    expect(tokens.input).toBe(5000);
+    expect(tokens.output).toBe(1200);
+    expect(tokens.total).toBe(6200);
+    expect(events).toHaveLength(1);
+  });
+
+  it("handles message_end with missing usage gracefully", () => {
+    const tokens = makeTokens();
+    const line = JSON.stringify({
+      type: "message_end",
+      message: { role: "assistant" },
+    });
+
+    const events = collectEvents(line, tokens);
+    expect(tokens.total).toBe(0);
+    expect(events).toHaveLength(0);
+  });
+
+  it("skips empty text blocks in turn_end", () => {
+    const textParts: string[] = [];
+    const line = JSON.stringify({
+      type: "turn_end",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "" },
+          { type: "text", text: "   " },
+          { type: "text", text: "real content" },
+        ],
+      },
+    });
+
+    collectEvents(line, undefined, textParts);
+    expect(textParts).toEqual(["real content"]);
   });
 });

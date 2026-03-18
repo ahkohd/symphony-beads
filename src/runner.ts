@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { join } from "path";
-import type { AgentEvent, Issue, RunnerConfig } from "./types.ts";
+import type { AgentEvent, Issue, RunnerConfig, TokenCount } from "./types.ts";
 import { WorkspaceManager } from "./workspace.ts";
 import { renderPrompt } from "./template.ts";
 import { exec } from "./exec.ts";
@@ -97,7 +97,7 @@ export class AgentRunner {
     onEvent({ kind: "session_started", session_id: sessionId });
 
     try {
-      const stdout = await this.spawn(ws.path, prompt, issue);
+      const stdout = await this.spawn(ws.path, prompt, issue, onEvent);
       // Write agent output to workspace for human review
       if (stdout.trim()) {
         const resultFile = join(ws.path, "RESULT.md");
@@ -137,7 +137,7 @@ export class AgentRunner {
 
   // -- Private ---------------------------------------------------------------
 
-  private spawn(cwd: string, prompt: string, issue: Issue): Promise<string> {
+  private spawn(cwd: string, prompt: string, issue: Issue, onEvent: EventCallback): Promise<string> {
     const issueId = issue.id;
     return new Promise<string>((resolve, reject) => {
       const { command, env } = this.buildCommand(issue);
@@ -146,14 +146,19 @@ export class AgentRunner {
         return reject(new Error("runner command is empty"));
       }
 
+      // Detect pi runner — inject --mode json for structured token tracking
+      const useJsonMode = isPiCommand(command);
+      const baseCommand = useJsonMode ? injectJsonMode(command) : command;
+
       // Pass prompt as argument — allows pi to use tools (bash, edit, write)
       // instead of just printing. The prompt is also written to TASK.md as context.
-      const fullCommand = [...command, prompt];
+      const fullCommand = [...baseCommand, prompt];
       log.debug("spawning agent", {
         issueId,
-        command: command.join(" "),
+        command: baseCommand.join(" "),
         cwd,
         model: env.SYMPHONY_MODEL ?? null,
+        jsonMode: useJsonMode,
       });
 
       const proc = Bun.spawn(fullCommand, {
@@ -178,17 +183,71 @@ export class AgentRunner {
         sub.timer = timer;
       }
 
+      // For pi JSON mode: stream-parse stdout line-by-line for token events.
+      // For non-pi runners: accumulate raw text.
+      const tokens: TokenCount = { input: 0, output: 0, total: 0 };
+      const textParts: string[] = [];
+      const rawChunks: string[] = [];
+
+      const readStdout = async () => {
+        const reader = proc.stdout.getReader();
+        const decoder = new TextDecoder();
+        let lineBuffer = "";
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            if (useJsonMode) {
+              lineBuffer += chunk;
+              const lines = lineBuffer.split("\n");
+              lineBuffer = lines.pop() ?? "";
+              for (const line of lines) {
+                if (line.trim()) {
+                  parseJsonLine(line, tokens, textParts, onEvent);
+                }
+              }
+            } else {
+              rawChunks.push(chunk);
+            }
+          }
+          // Flush remaining buffer
+          const remaining = decoder.decode();
+          if (useJsonMode) {
+            const finalBuf = lineBuffer + remaining;
+            if (finalBuf.trim()) {
+              parseJsonLine(finalBuf, tokens, textParts, onEvent);
+            }
+          } else if (remaining) {
+            rawChunks.push(remaining);
+          }
+        } catch {
+          // Stream may be cancelled on kill — ignore
+        }
+      };
+
+      const stdoutPromise = readStdout();
+
       proc.exited.then(async (code) => {
         if (timer) clearTimeout(timer);
         this.active.delete(issueId);
 
-        // Read stdout and stderr
-        const [stdout, stderr] = await Promise.all([
-          new Response(proc.stdout).text(),
-          new Response(proc.stderr).text(),
-        ]);
+        // Wait for stdout stream reading to complete
+        await stdoutPromise;
+
+        // Read stderr
+        const stderr = await new Response(proc.stderr).text();
         if (stderr.trim()) {
           log.debug("agent stderr", { issueId, stderr: stderr.slice(0, 1000) });
+        }
+
+        // Build output text
+        const stdout = useJsonMode ? textParts.join("\n") : rawChunks.join("");
+
+        // Emit final token state so orchestrator has accurate numbers
+        // even if the agent didn't produce a final message_end event
+        if (tokens.total > 0) {
+          onEvent({ kind: "token_update", tokens: { ...tokens } });
         }
 
         if (killed) {
@@ -283,6 +342,20 @@ interface Subprocess {
 }
 
 // ---------------------------------------------------------------------------
+// Pi command detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect whether the command array is running a pi agent.
+ * Returns true if the binary is 'pi' (or a path ending in '/pi').
+ */
+export function isPiCommand(command: string[]): boolean {
+  if (command.length === 0) return false;
+  const bin = command[0]!;
+  return bin === "pi" || bin.endsWith("/pi");
+}
+
+// ---------------------------------------------------------------------------
 // JSON stdout parsing — extract token usage from pi --mode json events
 // ---------------------------------------------------------------------------
 
@@ -300,6 +373,9 @@ export function injectJsonMode(command: string[]): string[] {
  *
  * Token usage on each assistant `message_end` represents that turn's API call
  * usage. We accumulate input/output across all turns.
+ *
+ * Also handles `session_end` events which contain the final cumulative
+ * usage summary (input_tokens, output_tokens, total_cost).
  */
 export function parseJsonLine(
   line: string,
@@ -311,7 +387,8 @@ export function parseJsonLine(
     const event = JSON.parse(line);
     if (!event || typeof event !== "object" || !event.type) return;
 
-    // Extract token usage from message_end events (assistant messages)
+    // Extract token usage from message_end events (assistant messages).
+    // Each message_end carries the usage for that individual API call.
     if (event.type === "message_end" && event.message?.role === "assistant") {
       const usage = event.message.usage;
       if (usage && typeof usage === "object") {
@@ -325,6 +402,26 @@ export function parseJsonLine(
           tokens: { input: tokens.input, output: tokens.output, total: tokens.total },
         });
       }
+    }
+
+    // Session-level cumulative usage from session_end / usage_summary events.
+    // These carry the authoritative totals for the entire session.
+    if (
+      (event.type === "session_end" || event.type === "usage_summary") &&
+      event.usage &&
+      typeof event.usage === "object"
+    ) {
+      const u = event.usage;
+      const input = typeof u.input_tokens === "number" ? u.input_tokens : tokens.input;
+      const output = typeof u.output_tokens === "number" ? u.output_tokens : tokens.output;
+      // Authoritative — replace rather than accumulate
+      tokens.input = input;
+      tokens.output = output;
+      tokens.total = input + output;
+      onEvent({
+        kind: "token_update",
+        tokens: { input, output, total: input + output },
+      });
     }
 
     // Extract text content from turn_end for RESULT.md
