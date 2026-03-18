@@ -189,18 +189,9 @@ function PriorityBadge({ priority }: { priority: number | null }) {
   return <span fg={badge.color}>{badge.label}</span>;
 }
 
-function IssueCard({
-  issue,
-  isSelected,
-  maxWidth,
-}: {
-  issue: Issue;
-  isSelected: boolean;
-  maxWidth: number;
-}) {
+function IssueCard({ issue, isSelected }: { issue: Issue; isSelected: boolean }) {
   const borderColor = isSelected ? COLORS.borderHighlight : COLORS.border;
   const bgColor = isSelected ? COLORS.surface : COLORS.bg;
-  const titleMaxLen = Math.max(8, maxWidth - 6);
   const assignee = issue.owner ? truncStr(issue.owner.replace(/^agent@/, "@"), 16) : "";
 
   return (
@@ -230,7 +221,7 @@ function IssueCard({
           <PriorityBadge priority={issue.priority} />
         </text>
       </box>
-      <text fg={COLORS.text}>{truncStr(issue.title, titleMaxLen)}</text>
+      <text fg={COLORS.text}>{issue.title}</text>
 
       {assignee ? <text fg={COLORS.textDim}>{assignee}</text> : <text fg={COLORS.textDim}>—</text>}
     </box>
@@ -301,7 +292,6 @@ function KanbanColumn({
               key={issue.id}
               issue={issue}
               isSelected={isActiveColumn && idx === selectedRow}
-              maxWidth={30}
             />
           ))
         )}
