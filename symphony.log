@@ -65,3 +65,18 @@
 {"ts":"2026-03-18T03:29:30.909Z","level":"info","msg":"workflow file changed, reloading config"}
 {"ts":"2026-03-18T03:29:30.909Z","level":"info","msg":"orchestrator config hot-reloaded"}
 {"ts":"2026-03-18T03:29:30.909Z","level":"info","msg":"workflow config reloaded successfully","poll_ms":30000,"max_concurrent":5,"runner":"pi -p --no-session"}
+{"ts":"2026-03-18T03:29:59.908Z","level":"info","msg":"tick","candidates":1,"running":1}
+{"ts":"2026-03-18T03:29:59.926Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T03:30:29.911Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T03:30:29.948Z","level":"info","msg":"tick","candidates":0,"running":1}
+{"ts":"2026-03-18T03:30:51.983Z","level":"info","msg":"agent completed","issue_id":"symphony-beads-f19","elapsed_s":232.302}
+{"ts":"2026-03-18T03:30:51.983Z","level":"debug","msg":"retry scheduled","issue_id":"symphony-beads-f19","attempt":1,"delay_ms":1000,"error":null}
+{"ts":"2026-03-18T03:30:53.005Z","level":"debug","msg":"retry: issue gone, releasing claim","issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T03:30:59.969Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:30:59.990Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T03:31:29.989Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:31:30.105Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T03:31:59.954Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T03:32:00.011Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:32:30.015Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T03:32:30.058Z","level":"info","msg":"tick","candidates":0,"running":0}
