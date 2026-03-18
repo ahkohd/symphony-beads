@@ -338,3 +338,4 @@
 {"ts":"2026-03-18T10:46:48.004Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
 {"ts":"2026-03-18T10:46:48.183Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
 {"ts":"2026-03-18T10:46:48.381Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T10:58:34.128Z","level":"info","msg":"tick","candidates":3,"running":5}

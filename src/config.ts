@@ -22,6 +22,7 @@ const DEFAULTS: ServiceConfig = {
   },
   agent: {
     max_concurrent: 5,
+    max_concurrent_by_state: null,
     max_turns: 20,
     max_retry_backoff_ms: 300_000,
   },
