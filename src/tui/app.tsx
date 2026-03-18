@@ -4,7 +4,7 @@
 // Five-column kanban layout (Open, In Progress, Review, Closed, Deferred).
 // Arrow keys to navigate cards, Enter for details, m/M to move status,
 // b to send to backlog (deferred), B to promote from backlog to open,
-// n to create new issue, d to close/delete.
+// n for issue-creation guidance, d to close/delete.
 //
 // ---------------------------------------------------------------------------
 
@@ -334,7 +334,7 @@ function Footer({ statusMsg }: { statusMsg: string }) {
         <span fg={COLORS.textDim}>b/B</span>
         <span fg={COLORS.text}> defer/promote </span>
         <span fg={COLORS.textDim}>n</span>
-        <span fg={COLORS.text}> new </span>
+        <span fg={COLORS.text}> create via agent </span>
         <span fg={COLORS.textDim}>d</span>
         <span fg={COLORS.text}> close </span>
         <span fg={COLORS.textDim}>r</span>
@@ -483,17 +483,14 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     await overlay.show(issue.id);
   }, [getSelectedIssue, renderer]);
 
-  const handleNewIssue = useCallback(() => {
+  const handleShowCreateGuidance = useCallback(() => {
     overlayRef.current = true;
     const dialog = new NewIssueDialog(renderer);
     dialog.onClose(() => {
       overlayRef.current = false;
     });
-    dialog.onCreated(() => {
-      refresh();
-    });
     dialog.show();
-  }, [renderer, refresh]);
+  }, [renderer]);
 
   // -- Keyboard --------------------------------------------------------------
 
@@ -580,7 +577,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
         break;
 
       case "n":
-        handleNewIssue();
+        handleShowCreateGuidance();
         break;
 
       case "d":
