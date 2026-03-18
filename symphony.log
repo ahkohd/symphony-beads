@@ -283,3 +283,47 @@
 {"ts":"2026-03-18T04:13:46.106Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
 {"ts":"2026-03-18T04:13:47.755Z","level":"info","msg":"tick","candidates":11,"running":5}
 {"ts":"2026-03-18T04:15:59.613Z","level":"debug","msg":"retry: issue gone, releasing claim","issue_id":"symphony-beads-03o"}
+{"ts":"2026-03-18T04:17:45.437Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:17:45.630Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:17:45.806Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:17:45.983Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:17:48.638Z","level":"info","msg":"tick","candidates":9,"running":5}
+{"ts":"2026-03-18T04:18:15.378Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:18:15.565Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:18:15.739Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:18:15.949Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:18:18.755Z","level":"info","msg":"tick","candidates":8,"running":5}
+{"ts":"2026-03-18T04:18:27.698Z","level":"info","msg":"agent completed","issue_id":"symphony-beads-b58","elapsed_s":972.651}
+{"ts":"2026-03-18T04:18:27.698Z","level":"debug","msg":"retry scheduled","issue_id":"symphony-beads-b58","attempt":1,"delay_ms":1000,"error":null}
+{"ts":"2026-03-18T04:18:28.720Z","level":"debug","msg":"retry: issue gone, releasing claim","issue_id":"symphony-beads-b58"}
+{"ts":"2026-03-18T04:18:45.512Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:18:45.696Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:18:45.941Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:18:46.183Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:18:48.854Z","level":"info","msg":"tick","candidates":9,"running":4}
+{"ts":"2026-03-18T04:18:48.854Z","level":"info","msg":"dispatching","issue_id":"symphony-beads-03o","title":"TUI: scaffold opentui and symphony tui subcommand","attempt":0}
+{"ts":"2026-03-18T04:18:48.854Z","level":"info","msg":"dispatched","count":1}
+{"ts":"2026-03-18T04:18:48.854Z","level":"debug","msg":"running hook","hook":"after_create","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-03o"}
+{"ts":"2026-03-18T04:18:48.913Z","level":"debug","msg":"running hook","hook":"before_run","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-03o"}
+{"ts":"2026-03-18T04:18:50.407Z","level":"info","msg":"rework detected — injecting PR review feedback","issue_id":"symphony-beads-03o","branch":"issue/symphony-beads-03o"}
+{"ts":"2026-03-18T04:18:50.408Z","level":"debug","msg":"spawning agent","issueId":"symphony-beads-03o","command":"pi -p --no-session","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-03o"}
+{"ts":"2026-03-18T04:19:15.449Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:19:15.633Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:19:15.826Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:19:16.022Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:19:19.015Z","level":"info","msg":"tick","candidates":9,"running":5}
+{"ts":"2026-03-18T04:19:45.494Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:19:45.682Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:19:45.857Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:19:46.034Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:19:49.127Z","level":"info","msg":"tick","candidates":9,"running":5}
+{"ts":"2026-03-18T04:20:15.431Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:20:15.611Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:20:15.788Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:20:15.963Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:20:19.241Z","level":"info","msg":"tick","candidates":9,"running":5}
+{"ts":"2026-03-18T04:20:45.490Z","level":"info","msg":"pr merged, closing issue","pr":5,"issue_id":"symphony-beads-k80"}
+{"ts":"2026-03-18T04:20:45.670Z","level":"info","msg":"pr merged, closing issue","pr":4,"issue_id":"symphony-beads-8r4"}
+{"ts":"2026-03-18T04:20:45.849Z","level":"info","msg":"pr merged, closing issue","pr":3,"issue_id":"symphony-beads-f19"}
+{"ts":"2026-03-18T04:20:46.028Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T04:20:49.354Z","level":"info","msg":"tick","candidates":9,"running":5}
