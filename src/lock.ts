@@ -17,6 +17,8 @@ export interface LockInfo {
   workspace_root: string;
   workflow_file: string;
   started_at: string;
+  http_port?: number;
+  http_hostname?: string;
 }
 
 const LOCK_FILENAME = ".symphony.lock";
@@ -58,6 +60,24 @@ export async function acquireLock(
 
   await Bun.write(lockPath, JSON.stringify(info, null, 2) + "\n");
   return lockPath;
+}
+
+/**
+ * Update the lock file with HTTP server info (port + hostname).
+ * Called after the HTTP dashboard starts so the TUI can discover it.
+ */
+export async function updateLockHttpInfo(
+  projectDir: string,
+  httpPort: number,
+  httpHostname: string,
+): Promise<void> {
+  const lockPath = resolve(projectDir, LOCK_FILENAME);
+  const existing = await readLockFile(lockPath);
+  if (!existing) return;
+
+  existing.http_port = httpPort;
+  existing.http_hostname = httpHostname;
+  await Bun.write(lockPath, JSON.stringify(existing, null, 2) + "\n");
 }
 
 /** Release the project lock file. Safe to call even if lock doesn't exist. */
