@@ -1,8 +1,9 @@
 // ---------------------------------------------------------------------------
 // TUI Kanban Board — issue management view using OpenTUI React
 //
-// Four-column kanban layout (Open, In Progress, Review, Closed).
+// Five-column kanban layout (Open, In Progress, Review, Closed, Deferred).
 // Arrow keys to navigate cards, Enter for details, m/M to move status,
+// b to send to backlog (deferred), B to promote from backlog to open,
 // n to create new issue, d to close/delete.
 //
 // Data: Tries live orchestrator API first (via OrchestratorClient), falls
@@ -53,6 +54,7 @@ const COLUMNS = [
   { key: "in_progress", label: "In Progress", color: "#7dcfff" },
   { key: "review", label: "Review", color: "#e0af68" },
   { key: "closed", label: "Closed", color: "#565f89" },
+  { key: "deferred", label: "Deferred", color: "#bb9af7" },
 ] as const;
 
 const STATUS_ORDER: string[] = COLUMNS.map((c) => c.key);
@@ -477,6 +479,8 @@ function Footer({ statusMsg, isLive }: { statusMsg: string; isLive: boolean }) {
         <span fg={COLORS.text}> detail </span>
         <span fg={COLORS.textDim}>m/M</span>
         <span fg={COLORS.text}> move </span>
+        <span fg={COLORS.textDim}>b/B</span>
+        <span fg={COLORS.text}> defer/promote </span>
         <span fg={COLORS.textDim}>n</span>
         <span fg={COLORS.text}> new </span>
         <span fg={COLORS.textDim}>d</span>
@@ -619,6 +623,40 @@ function KanbanApp({
     }
   }, [getSelectedIssue, refresh]);
 
+  const handleSendToBacklog = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    if (issue.status === "deferred") {
+      setStatusMsg(`${issue.id} is already deferred`);
+      return;
+    }
+    setStatusMsg(`deferring ${issue.id}…`);
+    const ok = await moveIssueStatus(issue.id, "deferred");
+    if (ok) {
+      setStatusMsg(`deferred ${issue.id}`);
+      await refresh();
+    } else {
+      setStatusMsg(`failed to defer ${issue.id}`);
+    }
+  }, [getSelectedIssue, refresh]);
+
+  const handlePromoteFromBacklog = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    if (issue.status !== "deferred") {
+      setStatusMsg(`${issue.id} is not deferred`);
+      return;
+    }
+    setStatusMsg(`promoting ${issue.id} → open…`);
+    const ok = await moveIssueStatus(issue.id, "open");
+    if (ok) {
+      setStatusMsg(`promoted ${issue.id} → open`);
+      await refresh();
+    } else {
+      setStatusMsg(`failed to promote ${issue.id}`);
+    }
+  }, [getSelectedIssue, refresh]);
+
   const handleShowDetail = useCallback(async () => {
     const issue = getSelectedIssue();
     if (!issue) return;
@@ -725,6 +763,18 @@ function KanbanApp({
 
       case "M":
         handleMoveBackward();
+        break;
+
+      case "b":
+        if (key.shift) {
+          handlePromoteFromBacklog();
+        } else {
+          handleSendToBacklog();
+        }
+        break;
+
+      case "B":
+        handlePromoteFromBacklog();
         break;
 
       case "n":
