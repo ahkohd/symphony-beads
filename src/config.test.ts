@@ -12,7 +12,7 @@ describe("parseWorkflow defaults", () => {
     expect(wf.config.tracker.kind).toBe("beads");
     expect(wf.config.agent.max_concurrent).toBe(5);
     expect(wf.config.polling.interval_ms).toBe(30_000);
-    expect(wf.config.runner.command).toBe("pi -p --no-session");
+    expect(wf.config.runner.command).toBe("pi --no-session");
     expect(wf.config.hooks.after_create).toBeNull();
     expect(wf.prompt_template).toBe("Just a prompt.");
   });

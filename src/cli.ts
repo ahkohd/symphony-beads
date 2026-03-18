@@ -188,10 +188,11 @@ async function daemonize(args: Args, config: ReturnType<typeof parseWorkflow>["c
 
   // Ensure log directory exists
   const { mkdir: mkdirFs } = await import("fs/promises");
+  const { openSync, closeSync } = await import("fs");
   await mkdirFs(dirname(logFile), { recursive: true });
 
-  // Open log file for appending
-  const logOut = Bun.file(logFile);
+  // Open log file in append mode so daemon restarts don't truncate history
+  const logFd = openSync(logFile, "a");
 
   // Build the child command args: replay original args but add --foreground
   const childArgs: string[] = ["start", "--foreground"];
@@ -201,14 +202,14 @@ async function daemonize(args: Args, config: ReturnType<typeof parseWorkflow>["c
   if (args.port !== null) childArgs.push("--port", String(args.port));
 
   // Spawn the daemon child. Use the same entry point (this script).
+  // Both stdout and stderr share the same fd so all output goes to one log file.
   const entryPoint = resolve(import.meta.dir, "cli.ts");
-  const logErr = Bun.file(logFile);
   const child = Bun.spawn(["bun", entryPoint, ...childArgs], {
     cwd: process.cwd(),
-    stdout: logOut,
-    stderr: logErr,
+    stdout: logFd,
+    stderr: logFd,
     stdin: "ignore",
-    env: { ...process.env },
+    env: { ...process.env, SYMPHONY_DAEMON: "1" },
   });
 
   // Detach from parent — allow child to outlive us
@@ -216,6 +217,9 @@ async function daemonize(args: Args, config: ReturnType<typeof parseWorkflow>["c
 
   // Brief wait to verify the child started successfully
   await Bun.sleep(500);
+
+  // Close the log fd in the parent — the child inherited its own copy
+  try { closeSync(logFd); } catch { /* ignore */ }
 
   // Check if child is still alive
   if (child.exitCode !== null) {
