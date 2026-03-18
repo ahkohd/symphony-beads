@@ -83,3 +83,55 @@ describe("formatTokens", () => {
     expect(formatTokens(10_000_000)).toBe("10.0M");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: total_tokens must include cache tokens (symphony-beads-xtp)
+//
+// The dashboard Header and kanban header display total tokens. Previously,
+// the code computed this as `input_tokens + output_tokens`, which missed
+// cache_read and cache_write tokens — often >99% of actual usage.
+// The fix uses `total_tokens` from the snapshot, which is the pre-computed
+// sum of all token types (input + output + cache_read + cache_write).
+// ---------------------------------------------------------------------------
+describe("total_tokens regression (symphony-beads-xtp)", () => {
+  test("total_tokens includes cache tokens and exceeds input + output", () => {
+    // Simulate a realistic snapshot where cache tokens dominate
+    const totals = {
+      input_tokens: 5,
+      output_tokens: 3,
+      cache_read_tokens: 6000,
+      cache_write_tokens: 310,
+      total_tokens: 6318, // = 5 + 3 + 6000 + 310
+      total_cost: 0.05,
+      seconds_running: 120,
+    };
+
+    // The correct total is total_tokens (6318), NOT input + output (8)
+    const correctTotal = totals.total_tokens;
+    const incorrectTotal = totals.input_tokens + totals.output_tokens;
+
+    expect(correctTotal).toBe(6318);
+    expect(incorrectTotal).toBe(8);
+    expect(correctTotal).toBeGreaterThan(incorrectTotal);
+
+    // Verify formatTokens renders the correct value
+    expect(formatTokens(correctTotal)).toBe("6.3k");
+    expect(formatTokens(incorrectTotal)).toBe("8"); // misleadingly low
+  });
+
+  test("dashboard.tsx uses total_tokens from snapshot (source code check)", async () => {
+    // Read the source to verify the pattern is not regressed
+    const source = await Bun.file("src/tui/dashboard.tsx").text();
+    // Must use total_tokens, not input_tokens + output_tokens
+    expect(source).toContain("snap?.totals?.total_tokens");
+    expect(source).not.toMatch(/snap\?\.totals\.input_tokens\s*\+\s*snap\?\.totals\.output_tokens/);
+    expect(source).not.toMatch(/totals\.input_tokens\s*\+\s*totals\.output_tokens/);
+  });
+
+  test("app.tsx uses total_tokens from snapshot (source code check)", async () => {
+    const source = await Bun.file("src/tui/app.tsx").text();
+    // Must use total_tokens, not input_tokens + output_tokens
+    expect(source).toContain("snapshot.totals.total_tokens");
+    expect(source).not.toMatch(/snapshot\.totals\.input_tokens\s*\+\s*snapshot\.totals\.output_tokens/);
+  });
+});
