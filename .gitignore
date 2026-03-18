@@ -2,3 +2,6 @@
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# Symphony lock files (runtime, per-project)
+.symphony.lock
