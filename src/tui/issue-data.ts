@@ -36,16 +36,6 @@ export interface IssueComment {
   created_at: string;
 }
 
-/** Optional agent session info from orchestrator API. */
-export interface AgentSessionInfo {
-  session_id: string | null;
-  elapsed_ms: number;
-  last_event: string | null;
-  last_message: string;
-  attempt: number;
-  tokens: { input: number; output: number; total: number };
-}
-
 /**
  * Fetch issue details via `bd show <id> --json`.
  * Returns null if the command fails or the issue is not found.
@@ -119,43 +109,3 @@ export async function fetchIssueComments(issueId: string): Promise<IssueComment[
   }
 }
 
-/**
- * Attempt to fetch agent session info from the orchestrator HTTP API.
- * Returns null if the orchestrator is not running or the issue is not active.
- */
-export async function fetchAgentSession(
-  issueId: string,
-  apiBase = "http://127.0.0.1:4500",
-): Promise<AgentSessionInfo | null> {
-  try {
-    const resp = await fetch(`${apiBase}/api/v1/${encodeURIComponent(issueId)}`, {
-      signal: AbortSignal.timeout(2000),
-    });
-    if (!resp.ok) return null;
-
-    const data = (await resp.json()) as Record<string, unknown>;
-    const running = data.running as Record<string, unknown> | null;
-    if (!running) return null;
-
-    const tokens = running.tokens as
-      | {
-          input: number;
-          output: number;
-          cache_read: number;
-          cache_write: number;
-          total: number;
-          cost: number;
-        }
-      | undefined;
-    return {
-      session_id: (running.session_id as string | null) ?? null,
-      elapsed_ms: (running.elapsed_ms as number) ?? 0,
-      last_event: (running.last_event as string | null) ?? null,
-      last_message: (running.last_message as string) ?? "",
-      attempt: (running.attempt as number) ?? 0,
-      tokens: tokens ?? { input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0, cost: 0 },
-    };
-  } catch {
-    return null;
-  }
-}

@@ -5,7 +5,7 @@
 //
 // Subcommands:
 //   start     Start the orchestrator (daemonizes by default; -f for foreground)
-//   status    Show current orchestrator state
+//   status    Show current issue status from beads
 //   validate  Validate WORKFLOW.md
 //   init      Initialize a new WORKFLOW.md
 //   instances List all running symphony instances
@@ -36,7 +36,7 @@ import {
   unregisterInstance,
 } from "./lock.ts";
 import { isJsonMode, log, setJsonMode, setLogFile } from "./log.ts";
-import { Orchestrator, type OrchestratorSnapshot } from "./orchestrator.ts";
+import { Orchestrator } from "./orchestrator.ts";
 import { PrMonitor } from "./pr-monitor.ts";
 import { BeadsTracker } from "./tracker.ts";
 import type { ServiceConfig } from "./types.ts";
@@ -365,56 +365,7 @@ async function cmdStartForeground(
 
 async function cmdStatus(args: Args): Promise<void> {
   const workflow = await loadWorkflow(args.workflow);
-  const projectDir = resolve(dirname(args.workflow));
-
-  // Try to fetch live orchestrator state (includes token counts)
-  const liveSnap = await tryFetchLiveSnapshot(projectDir);
-
-  if (liveSnap) {
-    // Live orchestrator is running — show rich status with tokens
-    if (args.json) {
-      console.log(JSON.stringify(liveSnap, null, 2));
-    } else {
-      const c = liveSnap.counts;
-      const t = liveSnap.totals;
-      console.log(
-        `  Running: ${c.running}  Retrying: ${c.retrying}  Completed: ${c.completed}  Claimed: ${c.claimed}`,
-      );
-      console.log(
-        `  Tokens:  ${fmtTokens(t.input_tokens)} in / ${fmtTokens(t.output_tokens)} out / ${fmtTokens(t.cache_read_tokens ?? 0)} cache-read / ${fmtTokens(t.cache_write_tokens ?? 0)} cache-write (${fmtTokens(t.total_tokens)} total)`,
-      );
-      if ((t.total_cost ?? 0) > 0) {
-        console.log(`  Cost:    $${t.total_cost.toFixed(4)}`);
-      }
-      console.log(`  Uptime:  ${fmtDuration(t.seconds_running * 1000)}`);
-      console.log("");
-
-      if (liveSnap.running.length > 0) {
-        console.log("  Running agents:");
-        for (const r of liveSnap.running) {
-          const tok =
-            r.tokens.total > 0
-              ? ` [${fmtTokens(r.tokens.total)} tok, $${(r.tokens.cost ?? 0).toFixed(4)}]`
-              : "";
-          console.log(
-            `    ${r.issue_identifier}  [${r.state}]  ${fmtDuration(r.elapsed_ms)}${tok}  ${r.title}`,
-          );
-        }
-        console.log("");
-      }
-
-      if (liveSnap.retrying.length > 0) {
-        console.log("  Retrying:");
-        for (const r of liveSnap.retrying) {
-          console.log(`    ${r.identifier}  attempt ${r.attempt}  ${r.error ?? "continuation"}`);
-        }
-        console.log("");
-      }
-    }
-    return;
-  }
-
-  // Fallback: no orchestrator running — query beads directly
+  // Query beads directly for current status.
   const tracker = new BeadsTracker(workflow.config);
   const candidates = await tracker.fetchCandidates();
   const terminalIds = await tracker.fetchTerminalIds();
@@ -440,136 +391,6 @@ async function cmdStatus(args: Args): Promise<void> {
       console.log("  (no active issues)");
     }
   }
-}
-
-async function tryFetchLiveSnapshot(projectDir: string): Promise<OrchestratorSnapshot | null> {
-  const lockInfo = await readProjectLock(projectDir);
-  if (!lockInfo || !isPidAlive(lockInfo.pid)) {
-    return null;
-  }
-
-  const rawLock = lockInfo as unknown as Record<string, unknown>;
-  const hostname =
-    asNonEmptyString(rawLock.api_hostname) ??
-    asNonEmptyString(rawLock.hostname) ??
-    asNonEmptyString(rawLock.server_hostname) ??
-    "127.0.0.1";
-  const port =
-    asPositiveNumber(rawLock.api_port) ??
-    asPositiveNumber(rawLock.port) ??
-    asPositiveNumber(rawLock.server_port) ??
-    4500;
-
-  const endpoints = [
-    `http://${hostname}:${port}/api/v1/state`,
-    `http://${hostname}:${port}/status`,
-  ];
-  for (const endpoint of endpoints) {
-    const snap = await fetchSnapshot(endpoint);
-    if (snap) {
-      return snap;
-    }
-  }
-
-  return null;
-}
-
-async function fetchSnapshot(url: string): Promise<OrchestratorSnapshot | null> {
-  try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(1500) });
-    if (!resp.ok) {
-      return null;
-    }
-
-    const raw = (await resp.json()) as unknown;
-    const direct = asOrchestratorSnapshot(raw);
-    if (direct) {
-      return direct;
-    }
-
-    if (raw && typeof raw === "object") {
-      const record = raw as Record<string, unknown>;
-      const nested =
-        asOrchestratorSnapshot(record.state) ?? asOrchestratorSnapshot(record.snapshot);
-      if (nested) {
-        return nested;
-      }
-    }
-  } catch {
-    // ignore connection/parsing errors and fall back to tracker status
-  }
-
-  return null;
-}
-
-function asOrchestratorSnapshot(value: unknown): OrchestratorSnapshot | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const snap = value as Partial<OrchestratorSnapshot>;
-  const counts = snap.counts;
-  const totals = snap.totals;
-
-  if (!counts || !totals || !Array.isArray(snap.running) || !Array.isArray(snap.retrying)) {
-    return null;
-  }
-
-  if (
-    typeof snap.generated_at !== "string" ||
-    typeof counts.running !== "number" ||
-    typeof counts.retrying !== "number" ||
-    typeof counts.completed !== "number" ||
-    typeof counts.claimed !== "number" ||
-    typeof totals.input_tokens !== "number" ||
-    typeof totals.output_tokens !== "number" ||
-    typeof totals.cache_read_tokens !== "number" ||
-    typeof totals.cache_write_tokens !== "number" ||
-    typeof totals.total_tokens !== "number" ||
-    typeof totals.total_cost !== "number" ||
-    typeof totals.seconds_running !== "number"
-  ) {
-    return null;
-  }
-
-  return snap as OrchestratorSnapshot;
-}
-
-function asNonEmptyString(value: unknown): string | null {
-  if (typeof value !== "string" || value.trim() === "") {
-    return null;
-  }
-  return value;
-}
-
-function asPositiveNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-
-  return null;
-}
-
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-function fmtDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
 }
 
 async function cmdValidate(args: Args): Promise<void> {
