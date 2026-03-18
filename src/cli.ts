@@ -11,6 +11,7 @@
 //   doctor    Verify dependencies, config, and runtime state
 //   logs      Tail the symphony log file
 //   stop      Stop a running symphony instance
+//   tui       Launch the interactive terminal UI
 //
 // Global flags:
 //   --json          JSON output
@@ -641,6 +642,11 @@ async function cmdLogs(args: Args): Promise<void> {
   }
 }
 
+async function cmdTui(): Promise<void> {
+  const { startTui } = await import("./tui/app.ts");
+  await startTui();
+}
+
 // -- Helpers -----------------------------------------------------------------
 
 async function loadWorkflow(path: string) {
@@ -672,6 +678,7 @@ Commands:
   doctor     Verify dependencies, config, and runtime state
   logs       Tail the symphony log file
   stop       Stop a running symphony instance
+  tui        Launch the interactive terminal UI
 
 Flags:
   --json           Output as JSON
@@ -803,6 +810,9 @@ async function main(): Promise<void> {
       break;
     case "stop":
       await cmdStop(args);
+      break;
+    case "tui":
+      await cmdTui();
       break;
     case "":
       error("no command specified");

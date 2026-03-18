@@ -10,7 +10,9 @@
     "start": "bun run src/cli.ts start",
     "typecheck": "bun x tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@opentui/core": "^0.1.88"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   }
