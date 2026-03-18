@@ -319,6 +319,128 @@ describe("Orchestrator reconciliation logic", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Per-state concurrency limits (mirrors Orchestrator.slotsAvailable)
+// ---------------------------------------------------------------------------
+
+describe("Orchestrator per-state concurrency limits", () => {
+  interface RunningInfo { state: string }
+
+  /**
+   * Mirrors the private Orchestrator.slotsAvailable() method.
+   * Checks both global limit and optional per-state limits.
+   */
+  function slotsAvailable(
+    running: Map<string, RunningInfo>,
+    maxConcurrent: number,
+    maxConcurrentByState: Record<string, number> | null,
+    state?: string,
+  ): boolean {
+    if (running.size >= maxConcurrent) return false;
+
+    if (state && maxConcurrentByState) {
+      const limit = maxConcurrentByState[state];
+      if (limit !== undefined) {
+        let count = 0;
+        for (const entry of running.values()) {
+          if (entry.state === state) count++;
+        }
+        if (count >= limit) return false;
+      }
+    }
+
+    return true;
+  }
+
+  it("allows dispatch when no per-state limits are set", () => {
+    const running = new Map<string, RunningInfo>();
+    expect(slotsAvailable(running, 5, null, "open")).toBe(true);
+  });
+
+  it("allows dispatch when per-state limit is not reached", () => {
+    const running = new Map<string, RunningInfo>([
+      ["bd-1", { state: "open" }],
+    ]);
+    expect(slotsAvailable(running, 5, { open: 3 }, "open")).toBe(true);
+  });
+
+  it("blocks dispatch when per-state limit is reached", () => {
+    const running = new Map<string, RunningInfo>([
+      ["bd-1", { state: "open" }],
+      ["bd-2", { state: "open" }],
+      ["bd-3", { state: "open" }],
+    ]);
+    expect(slotsAvailable(running, 5, { open: 3 }, "open")).toBe(false);
+  });
+
+  it("allows dispatch for a different state even when one state is full", () => {
+    const running = new Map<string, RunningInfo>([
+      ["bd-1", { state: "open" }],
+      ["bd-2", { state: "open" }],
+      ["bd-3", { state: "open" }],
+    ]);
+    // open is full (3/3), but in_progress has no limit
+    expect(slotsAvailable(running, 5, { open: 3 }, "in_progress")).toBe(true);
+  });
+
+  it("allows dispatch for a state without a configured limit", () => {
+    const running = new Map<string, RunningInfo>([
+      ["bd-1", { state: "review" }],
+      ["bd-2", { state: "review" }],
+    ]);
+    // Only "open" has a per-state limit, "review" does not
+    expect(slotsAvailable(running, 5, { open: 3 }, "review")).toBe(true);
+  });
+
+  it("still enforces global limit even with per-state limits", () => {
+    const running = new Map<string, RunningInfo>([
+      ["bd-1", { state: "open" }],
+      ["bd-2", { state: "in_progress" }],
+      ["bd-3", { state: "in_progress" }],
+    ]);
+    // global limit is 3 (reached), even though open has only 1/3 used
+    expect(slotsAvailable(running, 3, { open: 3, in_progress: 3 }, "open")).toBe(false);
+  });
+
+  it("blocks when per-state limit of 1 is reached", () => {
+    const running = new Map<string, RunningInfo>([
+      ["bd-1", { state: "open" }],
+    ]);
+    expect(slotsAvailable(running, 5, { open: 1 }, "open")).toBe(false);
+  });
+
+  it("allows when per-state limit equals global and neither is reached", () => {
+    const running = new Map<string, RunningInfo>([
+      ["bd-1", { state: "open" }],
+      ["bd-2", { state: "open" }],
+    ]);
+    expect(slotsAvailable(running, 5, { open: 5 }, "open")).toBe(true);
+  });
+
+  it("handles multiple states with independent limits", () => {
+    const running = new Map<string, RunningInfo>([
+      ["bd-1", { state: "open" }],
+      ["bd-2", { state: "open" }],
+      ["bd-3", { state: "in_progress" }],
+    ]);
+    const limits = { open: 2, in_progress: 3 };
+    // open is at limit (2/2)
+    expect(slotsAvailable(running, 5, limits, "open")).toBe(false);
+    // in_progress still has room (1/3)
+    expect(slotsAvailable(running, 5, limits, "in_progress")).toBe(true);
+  });
+
+  it("global check runs first (no state arg)", () => {
+    const running = new Map<string, RunningInfo>([
+      ["bd-1", { state: "open" }],
+      ["bd-2", { state: "open" }],
+    ]);
+    // Without state arg, only checks global
+    expect(slotsAvailable(running, 5, { open: 2 })).toBe(true);
+    expect(slotsAvailable(running, 2, { open: 5 })).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Snapshot structure (verify type shape)
 // ---------------------------------------------------------------------------
 
