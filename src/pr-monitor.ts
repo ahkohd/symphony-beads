@@ -24,7 +24,7 @@ export class PrMonitor {
   private interval: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
-  /** PR numbers already handled — skip on future ticks. */
+  /** PR numbers that have been fully handled — skip on future ticks. */
   private processedPrs = new Set<number>();
 
   constructor(config: ServiceConfig, pollIntervalMs?: number) {
@@ -57,17 +57,21 @@ export class PrMonitor {
     if (!prs) return;
 
     for (const pr of prs) {
-      if (!pr.issueId) continue;
-
-      // If a PR is OPEN without changes requested, clear it from the
-      // processed set so it can be re-evaluated later (rework case).
+      // If a PR transitions back to plain OPEN (rework case), clear its
+      // processed flag so we can re-evaluate it on a future tick.
       if (pr.state === "OPEN" && pr.reviewDecision !== "CHANGES_REQUESTED") {
         this.processedPrs.delete(pr.number);
         continue;
       }
 
-      // Already handled — skip to avoid spamming on every tick.
+      // Skip PRs we have already handled.
       if (this.processedPrs.has(pr.number)) continue;
+
+      if (!pr.issueId) {
+        // No associated issue — nothing to do, mark as processed.
+        this.processedPrs.add(pr.number);
+        continue;
+      }
 
       if (pr.state === "MERGED") {
         log.info("pr merged, closing issue", {

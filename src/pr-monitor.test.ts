@@ -167,145 +167,145 @@ describe("PrMonitor processed-PR tracking", () => {
     issueId: string | null;
   }
 
+  type Action = "close" | "reopen" | "skip" | "clear" | "skip-no-issue";
+
   /**
-   * Simulates the check() loop logic: decides actions for a list of PRs,
-   * tracking which have been processed to avoid duplicates.
-   * Returns the list of actions taken.
+   * Simulates the check() loop logic with the processedPrs set.
+   * Returns actions taken per PR so tests can assert behaviour.
    */
   function simulateCheck(
     prs: PrInfo[],
     processedPrs: Set<number>,
-  ): Array<{ pr: number; action: "close" | "reopen" }> {
-    const actions: Array<{ pr: number; action: "close" | "reopen" }> = [];
-
+  ): Action[] {
+    const actions: Action[] = [];
     for (const pr of prs) {
-      if (!pr.issueId) continue;
-
-      // OPEN without changes requested clears from processed set (rework)
       if (pr.state === "OPEN" && pr.reviewDecision !== "CHANGES_REQUESTED") {
         processedPrs.delete(pr.number);
+        actions.push("clear");
         continue;
       }
-
-      // Already handled — skip
-      if (processedPrs.has(pr.number)) continue;
-
+      if (processedPrs.has(pr.number)) {
+        actions.push("skip");
+        continue;
+      }
+      if (!pr.issueId) {
+        processedPrs.add(pr.number);
+        actions.push("skip-no-issue");
+        continue;
+      }
       if (pr.state === "MERGED") {
-        actions.push({ pr: pr.number, action: "close" });
         processedPrs.add(pr.number);
+        actions.push("close");
       } else if (pr.state === "OPEN" && pr.reviewDecision === "CHANGES_REQUESTED") {
-        actions.push({ pr: pr.number, action: "reopen" });
         processedPrs.add(pr.number);
+        actions.push("reopen");
       }
     }
-
     return actions;
   }
 
-  it("processes a merged PR on the first tick", () => {
+  it("processes a merged PR once then skips on subsequent ticks", () => {
     const processed = new Set<number>();
     const prs: PrInfo[] = [
-      { number: 1, state: "MERGED", reviewDecision: "APPROVED", issueId: "bd-1" },
+      { number: 10, state: "MERGED", reviewDecision: "APPROVED", issueId: "bd-1" },
     ];
-    const actions = simulateCheck(prs, processed);
-    expect(actions).toEqual([{ pr: 1, action: "close" }]);
-    expect(processed.has(1)).toBe(true);
+    // First tick: should close
+    expect(simulateCheck(prs, processed)).toEqual(["close"]);
+    expect(processed.has(10)).toBe(true);
+    // Second tick: should skip
+    expect(simulateCheck(prs, processed)).toEqual(["skip"]);
   });
 
-  it("skips already-processed merged PR on subsequent ticks", () => {
+  it("processes a changes-requested PR once then skips", () => {
     const processed = new Set<number>();
     const prs: PrInfo[] = [
-      { number: 1, state: "MERGED", reviewDecision: "APPROVED", issueId: "bd-1" },
+      { number: 20, state: "OPEN", reviewDecision: "CHANGES_REQUESTED", issueId: "bd-2" },
     ];
-    simulateCheck(prs, processed); // first tick
-    const actions = simulateCheck(prs, processed); // second tick
-    expect(actions).toEqual([]); // no duplicate action
+    expect(simulateCheck(prs, processed)).toEqual(["reopen"]);
+    expect(processed.has(20)).toBe(true);
+    expect(simulateCheck(prs, processed)).toEqual(["skip"]);
   });
 
-  it("skips already-processed changes-requested PR on subsequent ticks", () => {
+  it("clears processed flag when PR transitions back to plain OPEN", () => {
+    const processed = new Set<number>();
+
+    // Tick 1: changes requested → reopen
+    const changesReq: PrInfo[] = [
+      { number: 30, state: "OPEN", reviewDecision: "CHANGES_REQUESTED", issueId: "bd-3" },
+    ];
+    expect(simulateCheck(changesReq, processed)).toEqual(["reopen"]);
+    expect(processed.has(30)).toBe(true);
+
+    // Tick 2: developer pushed fixes, review dismissed → back to plain OPEN
+    const openAgain: PrInfo[] = [
+      { number: 30, state: "OPEN", reviewDecision: "", issueId: "bd-3" },
+    ];
+    expect(simulateCheck(openAgain, processed)).toEqual(["clear"]);
+    expect(processed.has(30)).toBe(false);
+
+    // Tick 3: PR gets merged → should process again
+    const merged: PrInfo[] = [
+      { number: 30, state: "MERGED", reviewDecision: "APPROVED", issueId: "bd-3" },
+    ];
+    expect(simulateCheck(merged, processed)).toEqual(["close"]);
+    expect(processed.has(30)).toBe(true);
+  });
+
+  it("marks PRs without issue ID as processed", () => {
     const processed = new Set<number>();
     const prs: PrInfo[] = [
-      { number: 2, state: "OPEN", reviewDecision: "CHANGES_REQUESTED", issueId: "bd-2" },
+      { number: 40, state: "MERGED", reviewDecision: "", issueId: null },
+    ];
+    expect(simulateCheck(prs, processed)).toEqual(["skip-no-issue"]);
+    expect(processed.has(40)).toBe(true);
+    // Should be skipped on next tick
+    expect(simulateCheck(prs, processed)).toEqual(["skip"]);
+  });
+
+  it("handles mix of processed and unprocessed PRs", () => {
+    const processed = new Set<number>();
+    const prs: PrInfo[] = [
+      { number: 50, state: "MERGED", reviewDecision: "APPROVED", issueId: "bd-5" },
+      { number: 51, state: "OPEN", reviewDecision: "", issueId: "bd-6" },
+      { number: 52, state: "OPEN", reviewDecision: "CHANGES_REQUESTED", issueId: "bd-7" },
+    ];
+    // First tick
+    expect(simulateCheck(prs, processed)).toEqual(["close", "clear", "reopen"]);
+    // Second tick — merged and changes-requested are skipped, open is cleared
+    expect(simulateCheck(prs, processed)).toEqual(["skip", "clear", "skip"]);
+  });
+
+  it("plain OPEN PR is never added to processed set", () => {
+    const processed = new Set<number>();
+    const prs: PrInfo[] = [
+      { number: 60, state: "OPEN", reviewDecision: "", issueId: "bd-8" },
     ];
     simulateCheck(prs, processed);
-    const actions = simulateCheck(prs, processed);
-    expect(actions).toEqual([]);
-  });
-
-  it("clears processed state when PR transitions back to OPEN without changes requested", () => {
-    const processed = new Set<number>();
-
-    // Tick 1: PR has changes requested → reopen
-    const prs1: PrInfo[] = [
-      { number: 3, state: "OPEN", reviewDecision: "CHANGES_REQUESTED", issueId: "bd-3" },
-    ];
-    const a1 = simulateCheck(prs1, processed);
-    expect(a1).toEqual([{ pr: 3, action: "reopen" }]);
-
-    // Tick 2: developer pushes fixes, review clears
-    const prs2: PrInfo[] = [
-      { number: 3, state: "OPEN", reviewDecision: "REVIEW_REQUIRED", issueId: "bd-3" },
-    ];
-    const a2 = simulateCheck(prs2, processed);
-    expect(a2).toEqual([]);
-    expect(processed.has(3)).toBe(false); // cleared from set
-
-    // Tick 3: changes requested again → should re-process
-    const prs3: PrInfo[] = [
-      { number: 3, state: "OPEN", reviewDecision: "CHANGES_REQUESTED", issueId: "bd-3" },
-    ];
-    const a3 = simulateCheck(prs3, processed);
-    expect(a3).toEqual([{ pr: 3, action: "reopen" }]);
+    expect(processed.has(60)).toBe(false);
+    simulateCheck(prs, processed);
+    expect(processed.has(60)).toBe(false);
   });
 
   it("handles rework → merge cycle correctly", () => {
     const processed = new Set<number>();
 
     // Tick 1: changes requested
-    const prs1: PrInfo[] = [
-      { number: 4, state: "OPEN", reviewDecision: "CHANGES_REQUESTED", issueId: "bd-4" },
-    ];
-    simulateCheck(prs1, processed);
+    simulateCheck(
+      [{ number: 70, state: "OPEN", reviewDecision: "CHANGES_REQUESTED", issueId: "bd-9" }],
+      processed,
+    );
 
     // Tick 2: developer pushes, review clears
-    const prs2: PrInfo[] = [
-      { number: 4, state: "OPEN", reviewDecision: "", issueId: "bd-4" },
-    ];
-    simulateCheck(prs2, processed);
+    simulateCheck(
+      [{ number: 70, state: "OPEN", reviewDecision: "", issueId: "bd-9" }],
+      processed,
+    );
 
-    // Tick 3: PR merged
-    const prs3: PrInfo[] = [
-      { number: 4, state: "MERGED", reviewDecision: "APPROVED", issueId: "bd-4" },
-    ];
-    const a3 = simulateCheck(prs3, processed);
-    expect(a3).toEqual([{ pr: 4, action: "close" }]);
-  });
-
-  it("skips PRs without issue IDs", () => {
-    const processed = new Set<number>();
-    const prs: PrInfo[] = [
-      { number: 5, state: "MERGED", reviewDecision: "APPROVED", issueId: null },
-    ];
-    const actions = simulateCheck(prs, processed);
-    expect(actions).toEqual([]);
-    expect(processed.has(5)).toBe(false);
-  });
-
-  it("handles multiple PRs independently", () => {
-    const processed = new Set<number>();
-    const prs: PrInfo[] = [
-      { number: 10, state: "MERGED", reviewDecision: "APPROVED", issueId: "bd-10" },
-      { number: 11, state: "OPEN", reviewDecision: "CHANGES_REQUESTED", issueId: "bd-11" },
-      { number: 12, state: "OPEN", reviewDecision: "", issueId: "bd-12" },
-    ];
-    const a1 = simulateCheck(prs, processed);
-    expect(a1).toEqual([
-      { pr: 10, action: "close" },
-      { pr: 11, action: "reopen" },
-    ]);
-
-    // Second tick — only PR 12 could become actionable
-    const a2 = simulateCheck(prs, processed);
-    expect(a2).toEqual([]); // 10 and 11 are already processed, 12 is OPEN/no-action
+    // Tick 3: PR merged — should process again since it was cleared
+    const actions = simulateCheck(
+      [{ number: 70, state: "MERGED", reviewDecision: "APPROVED", issueId: "bd-9" }],
+      processed,
+    );
+    expect(actions).toEqual(["close"]);
   });
 });
