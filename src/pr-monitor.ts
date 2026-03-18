@@ -24,6 +24,8 @@ export class PrMonitor {
   private interval: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
+  /** PR numbers already handled — skip on future ticks. */
+  private processedPrs = new Set<number>();
 
   constructor(config: ServiceConfig, pollIntervalMs?: number) {
     this.cwd = config.tracker.project_path;
@@ -57,18 +59,30 @@ export class PrMonitor {
     for (const pr of prs) {
       if (!pr.issueId) continue;
 
+      // If a PR is OPEN without changes requested, clear it from the
+      // processed set so it can be re-evaluated later (rework case).
+      if (pr.state === "OPEN" && pr.reviewDecision !== "CHANGES_REQUESTED") {
+        this.processedPrs.delete(pr.number);
+        continue;
+      }
+
+      // Already handled — skip to avoid spamming on every tick.
+      if (this.processedPrs.has(pr.number)) continue;
+
       if (pr.state === "MERGED") {
         log.info("pr merged, closing issue", {
           pr: pr.number,
           issue_id: pr.issueId,
         });
         await this.updateIssue(pr.issueId, "closed");
+        this.processedPrs.add(pr.number);
       } else if (pr.state === "OPEN" && pr.reviewDecision === "CHANGES_REQUESTED") {
         log.info("pr has changes requested, reopening issue", {
           pr: pr.number,
           issue_id: pr.issueId,
         });
         await this.updateIssue(pr.issueId, "open");
+        this.processedPrs.add(pr.number);
       }
     }
   }
