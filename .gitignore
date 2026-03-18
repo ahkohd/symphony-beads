@@ -1,16 +1,15 @@
-
 # Dolt database files (added by bd init)
 .dolt/
 *.db
 
-# Symphony lock files (runtime, per-project)
+# Symphony runtime
 .symphony.lock
 workspaces/
-node_modules
-node_modules
-node_modules
 symphony.log
-node_modules
-node_modules
+
+# Workspace artifacts
 TASK.md
 AGENTS.md
+
+# Dependencies
+node_modules
