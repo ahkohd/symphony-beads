@@ -69,6 +69,21 @@ export class Orchestrator {
     }
   }
 
+  /**
+   * Hot-reload config and prompt template. Called by the WorkflowWatcher when
+   * WORKFLOW.md changes. Applies to future dispatch, retry scheduling,
+   * reconciliation, hook execution, and agent launches. In-flight sessions
+   * continue with their original config.
+   */
+  reload(config: ServiceConfig, promptTemplate: string): void {
+    this.config = config;
+    this.promptTemplate = promptTemplate;
+    this.runner = new AgentRunner(config.runner);
+    this.tracker = new BeadsTracker(config);
+    this.workspace = new WorkspaceManager(config);
+    log.info("orchestrator config hot-reloaded");
+  }
+
   stop(): void {
     log.info("stopping service");
     this.alive = false;

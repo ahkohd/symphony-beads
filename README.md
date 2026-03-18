@@ -176,6 +176,81 @@ systemctl --user enable --now symphony-project-b
 6. On failure, retries with exponential backoff
 7. Reconciles running sessions against tracker state each tick
 
+## Issue lifecycle
+
+Issues move through three categories of states. The orchestrator's behavior
+depends on which category the current state falls into:
+
+| Category | States | Orchestrator behavior |
+|----------|--------|-----------------------|
+| **Active** | `open`, `in_progress` | Agent is dispatched / kept running |
+| **Paused** | `review`, `blocked`, `deferred` | Agent is stopped, workspace is **preserved** |
+| **Terminal** | `done`, `closed`, `cancelled`, `duplicate` | Agent is stopped, workspace is **removed** |
+
+The full lifecycle with human review:
+
+```
+                  ┌──────────────────────────────────────┐
+                  │                                      │
+                  ▼                                      │
+  ┌────────┐  dispatch  ┌─────────────┐  agent moves  ┌────────┐
+  │  open  │ ─────────► │ in_progress │ ────────────► │ review │
+  └────────┘            └─────────────┘               └────────┘
+      ▲                       │                          │  │
+      │                       │ agent/human              │  │
+      │                       ▼                          │  │
+      │                 ┌───────────┐    human accepts   │  │
+      │                 │   done    │ ◄──────────────────┘  │
+      │                 └───────────┘                       │
+      │                                                    │
+      └────────────────────────────────────────────────────┘
+                        human requests rework
+```
+
+### Review workflow
+
+The review state enables human-in-the-loop oversight. Here is the complete
+flow:
+
+1. **Agent works on the issue.** The orchestrator dispatches the issue and the
+   agent implements the solution in an isolated workspace, committing to a
+   feature branch.
+
+2. **Agent moves the issue to `review`.** When the agent finishes, it runs
+   `bd update <id> --status review`. Because `review` is neither an active
+   state nor a terminal state, the orchestrator stops the agent but **preserves
+   the workspace and branch** for inspection.
+
+3. **Human reviews.** The operator inspects the workspace, branch, or PR:
+   - Review the code changes on the feature branch
+   - Run tests, check CI results
+   - Read the agent's summary comment (`bd show <id>`)
+
+4. **Human decides:**
+   - **Accept →** `bd update <id> --status done` (terminal: workspace cleaned up)
+   - **Rework →** `bd update <id> --status open` (active: agent picks it up again)
+   - **Rework with notes →** `bd comment <id> "Please fix X"` then
+     `bd update <id> --status open`
+
+### Configuring the review status
+
+The `review` status is a custom beads status. It is configured automatically
+when you run `symphony init`, but you can also set it up manually:
+
+```bash
+bd config set status.custom "review"
+```
+
+To add multiple custom statuses (comma-separated):
+
+```bash
+bd config set status.custom "review,qa,staging"
+```
+
+> **Important:** Do not add `review` to `active_states` or `terminal_states`
+> in your WORKFLOW.md. The orchestrator must treat it as a paused state —
+> stopping the agent while keeping the workspace intact for human inspection.
+
 ## Architecture
 
 ```

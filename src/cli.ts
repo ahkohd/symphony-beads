@@ -22,6 +22,7 @@ import { parseWorkflow, validateConfig } from "./config.ts";
 import { BeadsTracker } from "./tracker.ts";
 import { WorkspaceManager } from "./workspace.ts";
 import { Orchestrator } from "./orchestrator.ts";
+import { WorkflowWatcher } from "./watcher.ts";
 import { log, setJsonMode, isJsonMode, setLogFile } from "./log.ts";
 import {
   acquireLock,
@@ -189,8 +190,14 @@ async function cmdStart(args: Args): Promise<void> {
   const workspace = new WorkspaceManager(config);
   const orchestrator = new Orchestrator(config, workflow.prompt_template, tracker, workspace);
 
+  // Watch WORKFLOW.md for changes and hot-reload config (spec §6.2)
+  const workflowAbsPath = resolve(args.workflow);
+  const watcher = new WorkflowWatcher(workflowAbsPath, orchestrator);
+  await watcher.start();
+
   // Graceful shutdown with cleanup
   const shutdown = async () => {
+    watcher.stop();
     orchestrator.stop();
     await releaseLock(projectDir);
     await unregisterInstance(projectDir);
@@ -295,10 +302,26 @@ async function cmdInit(args: Args): Promise<void> {
 
   await Bun.write(path, DEFAULT_WORKFLOW);
 
+  // Configure the 'review' custom status in beads so agents can use it.
+  // This status is intentionally NOT in active_states or terminal_states,
+  // causing the orchestrator to stop the agent while preserving the workspace.
+  const { exec: execCmd } = await import("./exec.ts");
+  const configResult = await execCmd(["bd", "config", "set", "status.custom", "review"], {
+    cwd: process.cwd(),
+  });
+  const reviewConfigured = configResult.code === 0;
+
   if (args.json) {
-    console.log(JSON.stringify({ created: path }));
+    console.log(JSON.stringify({ created: path, review_status_configured: reviewConfigured }));
   } else {
     log.info("created workflow file", { path });
+    if (reviewConfigured) {
+      log.info("configured beads custom status: review");
+    } else {
+      log.warn(
+        "could not configure 'review' custom status — run: bd config set status.custom \"review\"",
+      );
+    }
   }
 }
 
@@ -404,8 +427,41 @@ Description: {{ issue.description }}
 Priority: {{ issue.priority }}
 Labels: {{ issue.labels }}
 
-Implement the solution. When done, mark the issue complete:
-  bd update {{ issue.identifier }} --status done
+## Workflow
+
+Follow these steps in order:
+
+### 1. Create a feature branch
+\`\`\`bash
+git checkout -b issue/{{ issue.identifier }}
+\`\`\`
+
+### 2. Implement the solution
+- Make the necessary code changes
+- Commit your work with clear, descriptive messages:
+  \`\`\`bash
+  git add -A
+  git commit -m "issue/{{ issue.identifier }}: <describe what changed>"
+  \`\`\`
+
+### 3. Push the branch
+\`\`\`bash
+git push origin HEAD
+\`\`\`
+
+### 4. Move the issue to review
+\`\`\`bash
+bd update {{ issue.identifier }} --status review
+\`\`\`
+
+### 5. Add a summary comment
+\`\`\`bash
+bd comment {{ issue.identifier }} "Summary of changes: <describe what was done and any notes for the reviewer>"
+\`\`\`
+
+**Important**: Do NOT mark the issue as done. Moving it to \`review\` hands it off
+to a human reviewer. The reviewer will either accept (move to done) or request
+rework (move back to open).
 `;
 
 // -- Main --------------------------------------------------------------------
