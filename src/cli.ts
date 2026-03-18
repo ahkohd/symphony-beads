@@ -920,6 +920,9 @@ async function main(): Promise<void> {
     case "stop":
       await cmdStop(args);
       break;
+    case "tui":
+      await cmdTui();
+      break;
     case "":
       error("no command specified");
     default:
