@@ -20,6 +20,7 @@ import {
   Text,
 } from "@opentui/core";
 
+import { exec } from "../exec.ts";
 import {
   fetchIssueComments,
   fetchIssueDetail,
@@ -68,6 +69,26 @@ const STATUS_COLORS: Record<string, string> = {
   done: COLORS.textDim,
 };
 
+function canOpenPr(status: string): boolean {
+  return status === "review" || status === "closed";
+}
+
+async function openExternalUrl(url: string): Promise<boolean> {
+  const command =
+    process.platform === "darwin"
+      ? ["open", url]
+      : process.platform === "win32"
+        ? ["cmd", "/c", "start", "", url]
+        : ["xdg-open", url];
+
+  const result = await exec(command, {
+    cwd: process.cwd(),
+    timeout: 5000,
+  });
+
+  return result.code === 0;
+}
+
 // -- Types for VNode children ------------------------------------------------
 type VChild = ReturnType<typeof Box> | ReturnType<typeof Text> | null;
 
@@ -79,6 +100,8 @@ export class IssueDetailOverlay {
   private keyHandler: ((key: KeyEvent) => void) | null = null;
   private onCloseCallback: (() => void) | null = null;
   private showToken = 0;
+  private currentIssue: IssueDetail | null = null;
+  private openingPr = false;
 
   constructor(renderer: CliRenderer) {
     this.renderer = renderer;
@@ -141,6 +164,9 @@ export class IssueDetailOverlay {
       this.overlayRoot = null;
     }
 
+    this.currentIssue = null;
+    this.openingPr = false;
+
     if (notifyClose && wasVisible) {
       this.onCloseCallback?.();
     }
@@ -180,10 +206,13 @@ export class IssueDetailOverlay {
 
     this.renderer.root.add(overlay);
     this.overlayRoot = this.renderer.root.getRenderable("issue-detail-overlay") ?? null;
+    this.currentIssue = null;
     this.installKeyHandler();
   }
 
   private renderDetail(issue: IssueDetail, comments: IssueComment[]): void {
+    this.currentIssue = issue;
+
     const children: VChild[] = [];
 
     // -- Header: ID + Title --
@@ -235,7 +264,9 @@ export class IssueDetailOverlay {
       }
     }
 
-    const footerText = " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom";
+    const footerText = canOpenPr(issue.status)
+      ? " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom  o open PR"
+      : " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom";
 
     // Filter out nulls
     const validChildren = children.filter((c): c is NonNullable<VChild> => c != null);
@@ -471,6 +502,19 @@ export class IssueDetailOverlay {
     scrollbox.scrollTo(maxScrollTop);
   }
 
+  private async openCurrentIssuePr(): Promise<void> {
+    const issue = this.currentIssue;
+    if (!issue || this.openingPr) return;
+    if (!canOpenPr(issue.status) || !issue.pr_url) return;
+
+    this.openingPr = true;
+    try {
+      await openExternalUrl(issue.pr_url);
+    } finally {
+      this.openingPr = false;
+    }
+  }
+
   private installKeyHandler(): void {
     if (this.keyHandler) {
       this.renderer.keyInput.off("keypress", this.keyHandler);
@@ -506,6 +550,13 @@ export class IssueDetailOverlay {
         } else {
           this.scrollToTop();
         }
+        return;
+      }
+
+      if (key.name === "o") {
+        key.preventDefault();
+        key.stopPropagation();
+        void this.openCurrentIssuePr();
         return;
       }
 
