@@ -296,9 +296,11 @@ export class IssueDetailOverlay {
     this.overlayRoot = this.renderer.root.getRenderable("issue-detail-overlay") ?? null;
 
     // Focus the scroll box so arrow keys work
-    const scrollBox = this.overlayRoot
-      ? (this.overlayRoot as Renderable).getRenderable?.("issue-detail-scrollbox")
-      : null;
+    const scrollBox =
+      (this.renderer.root as Renderable).getRenderable?.("issue-detail-scrollbox") ??
+      (this.overlayRoot
+        ? (this.overlayRoot as Renderable).getRenderable?.("issue-detail-scrollbox")
+        : null);
     if (scrollBox) {
       this.renderer.focusRenderable(scrollBox);
     }
@@ -418,8 +420,14 @@ export class IssueDetailOverlay {
     scrollHeight?: number;
     viewport?: { height: number };
   } | null {
+    const byRoot = this.renderer.root?.getRenderable?.("issue-detail-scrollbox");
+    const byOverlay = this.overlayRoot?.getRenderable?.("issue-detail-scrollbox");
+    const byDescendant = this.overlayRoot?.findDescendantById?.("issue-detail-scrollbox");
+
+    const scrollbox = byRoot ?? byOverlay ?? byDescendant ?? null;
+
     return (
-      (this.overlayRoot?.getRenderable?.("issue-detail-scrollbox") as
+      (scrollbox as
         | {
             scrollBy?: (
               delta: number | { x: number; y: number },
