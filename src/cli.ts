@@ -39,6 +39,7 @@ import {
   listInstances,
   readProjectLock,
   isPidAlive,
+  updateLockHttpInfo,
 } from "./lock.ts";
 
 const VERSION = "0.1.0";
@@ -58,7 +59,7 @@ interface Args {
   all: boolean;
 }
 
-function parseArgs(argv: string[]): Args {
+export function parseArgs(argv: string[]): Args {
   const args: Args = {
     command: "",
     json: false,
@@ -346,11 +347,14 @@ async function cmdStartForeground(
   let httpDashboard: HttpDashboard | null = null;
   const serverPort = args.port ?? config.server?.port ?? null;
   if (serverPort) {
+    const httpHostname = config.server?.hostname ?? "127.0.0.1";
     httpDashboard = new HttpDashboard(orchestrator, tracker, {
       port: serverPort,
-      hostname: config.server?.hostname ?? "127.0.0.1",
+      hostname: httpHostname,
     });
     httpDashboard.start();
+    // Write HTTP port to lock file so TUI can discover it
+    await updateLockHttpInfo(projectDir, serverPort, httpHostname);
   }
 
   // Graceful shutdown with cleanup
@@ -841,6 +845,15 @@ hooks:
   after_create: |
     git clone --single-branch --branch master $REPO_URL . 2>/dev/null || true
     rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
+    echo "node_modules" >> .gitignore
+    bun install 2>/dev/null || npm install 2>/dev/null || true
+    cat > AGENTS.md << 'AGENTS'
+    # Guidelines
+    - Work ONLY within this directory. Do not read or write files outside of it.
+    - Do not cd to parent directories or access ../
+    - All file paths must be relative to the current working directory.
+    - Use git to commit and push your changes when done.
+    AGENTS
   before_run: |
     git fetch origin master 2>/dev/null || true
     git fetch origin issue/$SYMPHONY_ISSUE_ID 2>/dev/null || true
@@ -934,11 +947,14 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  if (isJsonMode()) {
-    console.error(JSON.stringify({ error: String(err) }));
-  } else {
-    log.error(String(err));
-  }
-  process.exit(1);
-});
+// Only run main() when executed directly (not when imported for testing)
+if (import.meta.main || process.argv[1]?.endsWith("/cli.ts")) {
+  main().catch((err) => {
+    if (isJsonMode()) {
+      console.error(JSON.stringify({ error: String(err) }));
+    } else {
+      log.error(String(err));
+    }
+    process.exit(1);
+  });
+}

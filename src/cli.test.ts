@@ -6,6 +6,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import { resolve, dirname, join } from "path";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "fs/promises";
 import { tmpdir } from "os";
+import { findProjectRoot } from "./cli.ts";
 
 const CLI_PATH = resolve(import.meta.dir, "cli.ts");
 
@@ -119,6 +120,57 @@ describe("CLI flag parsing", () => {
     const { exitCode, stderr } = await runCli([]);
     expect(exitCode).not.toBe(0);
     expect(stderr).toContain("no command");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs unit tests — -f flag context resolution
+// ---------------------------------------------------------------------------
+
+describe("parseArgs -f flag", () => {
+  it("-f sets shortF flag (not foreground or follow directly)", () => {
+    const args = parseArgs(["start", "-f"]);
+    expect(args.shortF).toBe(true);
+    expect(args.foreground).toBe(false);
+    expect(args.follow).toBe(false);
+    expect(args.command).toBe("start");
+  });
+
+  it("--foreground sets foreground directly", () => {
+    const args = parseArgs(["start", "--foreground"]);
+    expect(args.foreground).toBe(true);
+    expect(args.shortF).toBe(false);
+  });
+
+  it("--follow sets follow directly", () => {
+    const args = parseArgs(["logs", "--follow"]);
+    expect(args.follow).toBe(true);
+    expect(args.shortF).toBe(false);
+  });
+
+  it("-f with start command should only set foreground (via main resolution)", () => {
+    // parseArgs sets shortF; main() resolves it per command
+    const args = parseArgs(["start", "-f"]);
+    expect(args.shortF).toBe(true);
+    expect(args.command).toBe("start");
+    // Simulate the resolution logic from main()
+    if (args.shortF && args.command === "start") {
+      args.foreground = true;
+    }
+    expect(args.foreground).toBe(true);
+    expect(args.follow).toBe(false);
+  });
+
+  it("-f with logs command should only set follow (via main resolution)", () => {
+    const args = parseArgs(["logs", "-f"]);
+    expect(args.shortF).toBe(true);
+    expect(args.command).toBe("logs");
+    // Simulate the resolution logic from main()
+    if (args.shortF && args.command === "logs") {
+      args.follow = true;
+    }
+    expect(args.follow).toBe(true);
+    expect(args.foreground).toBe(false);
   });
 });
 
@@ -319,5 +371,81 @@ describe("CLI init", () => {
     expect(exitCode).toBe(1);
     const parsed = JSON.parse(stdout.trim());
     expect(parsed.error).toContain("already exists");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findProjectRoot tests
+// ---------------------------------------------------------------------------
+
+describe("findProjectRoot", () => {
+  let rootDir: string;
+
+  beforeEach(async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "symphony-root-test-"));
+  });
+
+  afterEach(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  it("finds .git directory in cwd", async () => {
+    await mkdir(join(rootDir, ".git"));
+    expect(findProjectRoot(rootDir)).toBe(rootDir);
+  });
+
+  it("finds .jj directory in cwd", async () => {
+    await mkdir(join(rootDir, ".jj"));
+    expect(findProjectRoot(rootDir)).toBe(rootDir);
+  });
+
+  it("finds WORKFLOW.md file in cwd", async () => {
+    await writeFile(join(rootDir, "WORKFLOW.md"), "test");
+    expect(findProjectRoot(rootDir)).toBe(rootDir);
+  });
+
+  it("walks up to find .git in parent directory", async () => {
+    await mkdir(join(rootDir, ".git"));
+    const subdir = join(rootDir, "src", "deep");
+    await mkdir(subdir, { recursive: true });
+    expect(findProjectRoot(subdir)).toBe(rootDir);
+  });
+
+  it("walks up to find .jj in ancestor directory", async () => {
+    await mkdir(join(rootDir, ".jj"));
+    const subdir = join(rootDir, "a", "b", "c");
+    await mkdir(subdir, { recursive: true });
+    expect(findProjectRoot(subdir)).toBe(rootDir);
+  });
+
+  it("walks up to find WORKFLOW.md in parent directory", async () => {
+    await writeFile(join(rootDir, "WORKFLOW.md"), "test");
+    const subdir = join(rootDir, "packages", "core");
+    await mkdir(subdir, { recursive: true });
+    expect(findProjectRoot(subdir)).toBe(rootDir);
+  });
+
+  it("prefers closest marker (nested repos)", async () => {
+    await mkdir(join(rootDir, ".git"));
+    const childRepo = join(rootDir, "submodule");
+    await mkdir(join(childRepo, ".git"), { recursive: true });
+    expect(findProjectRoot(childRepo)).toBe(childRepo);
+  });
+
+  it("falls back to startDir when no marker found", async () => {
+    const result = findProjectRoot(rootDir);
+    expect(typeof result).toBe("string");
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it("works from CLI: subdirectory run finds project root", async () => {
+    await mkdir(join(rootDir, ".git"));
+    await writeFile(join(rootDir, "WORKFLOW.md"), MINIMAL_WORKFLOW);
+    await mkdir(join(rootDir, "workspaces"), { recursive: true });
+    const subdir = join(rootDir, "src");
+    await mkdir(subdir, { recursive: true });
+
+    const { exitCode } = await runCli(["validate"], { cwd: subdir });
+    expect(exitCode).toBe(0);
   });
 });

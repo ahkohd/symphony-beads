@@ -17,6 +17,15 @@ hooks:
   after_create: |
     git clone --single-branch --branch master git@github.com:ahkohd/symphony-beads.git . 2>/dev/null || true
     rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
+    echo "node_modules" >> .gitignore
+    bun install 2>/dev/null || true
+    cat > AGENTS.md << 'AGENTS'
+    # Guidelines
+    - Work ONLY within this directory. Do not read or write files outside of it.
+    - Do not cd to parent directories or access ../
+    - All file paths must be relative to the current working directory.
+    - Use git to commit and push your changes when done.
+    AGENTS
   before_run: |
     git fetch origin master 2>/dev/null || true
     git fetch origin issue/$SYMPHONY_ISSUE_ID 2>/dev/null || true
