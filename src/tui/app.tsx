@@ -6,9 +6,6 @@
 // b to send to backlog (deferred), B to promote from backlog to open,
 // n to create new issue, d to close/delete.
 //
-// Data: Tries live orchestrator API first (via OrchestratorClient), falls
-// back to bd list --all --json if the orchestrator is not running.
-// Live mode shows running/retrying status, token counts, and elapsed time.
 // ---------------------------------------------------------------------------
 
 import { createCliRenderer } from "@opentui/core";
@@ -17,8 +14,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { exec } from "../exec.ts";
 import { IssueDetailOverlay } from "./issue-detail-overlay.ts";
 import { NewIssueDialog } from "./new-issue-dialog.ts";
-import { OrchestratorClient } from "./live-client.ts";
-import type { OrchestratorSnapshot } from "../orchestrator.ts";
 
 // -- Types -------------------------------------------------------------------
 
@@ -29,17 +24,7 @@ interface Issue {
   priority: number | null;
   issue_type: string;
   owner: string | null;
-  // Live orchestrator data (when connected)
-  liveStatus?: "running" | "retrying" | null;
-  elapsed_ms?: number;
-  tokens?: { input: number; output: number; cache_read: number; cache_write: number; total: number; cost: number };
-  attempt?: number;
-  lastEvent?: string | null;
-  retryDueAt?: string;
 }
-
-/** Connection mode — live orchestrator or static bd data. */
-type DataSource = "live" | "static";
 
 /** Position of the selected card: column index + card index within column. */
 interface CursorPos {
@@ -109,54 +94,6 @@ async function fetchAllIssues(): Promise<Issue[]> {
   }
 }
 
-/**
- * Enrich issue list with live orchestrator data.
- * Marks issues as running/retrying and attaches token/elapsed info.
- */
-function enrichWithLiveData(
-  issues: Issue[],
-  snapshot: OrchestratorSnapshot,
-): Issue[] {
-  // Build lookup maps from snapshot
-  const runningMap = new Map<string, OrchestratorSnapshot["running"][number]>();
-  for (const r of snapshot.running) {
-    runningMap.set(r.issue_id, r);
-    runningMap.set(r.issue_identifier, r);
-  }
-
-  const retryMap = new Map<string, OrchestratorSnapshot["retrying"][number]>();
-  for (const r of snapshot.retrying) {
-    retryMap.set(r.issue_id, r);
-    retryMap.set(r.identifier, r);
-  }
-
-  return issues.map((issue) => {
-    const running = runningMap.get(issue.id);
-    if (running) {
-      return {
-        ...issue,
-        liveStatus: "running" as const,
-        elapsed_ms: running.elapsed_ms,
-        tokens: running.tokens,
-        attempt: running.attempt,
-        lastEvent: running.last_event,
-      };
-    }
-
-    const retrying = retryMap.get(issue.id);
-    if (retrying) {
-      return {
-        ...issue,
-        liveStatus: "retrying" as const,
-        attempt: retrying.attempt,
-        retryDueAt: retrying.due_at,
-      };
-    }
-
-    return issue;
-  });
-}
-
 async function moveIssueStatus(
   issueId: string,
   newStatus: string,
@@ -221,27 +158,11 @@ function clampCursor(
 function Header({
   issueCount,
   status,
-  dataSource,
-  liveStats,
 }: {
   issueCount: number;
   status: string;
-  dataSource: DataSource;
-  liveStats: { running: number; retrying: number; tokens: number } | null;
 }) {
-  const isLive = dataSource === "live";
-  const connIndicator = isLive ? "● LIVE" : "○ STATIC";
-  const connColor = isLive ? COLORS.green : COLORS.textDim;
-
-  // Build live stats string
-  let statsStr = "";
-  if (liveStats) {
-    const parts: string[] = [];
-    if (liveStats.running > 0) parts.push(`${liveStats.running} running`);
-    if (liveStats.retrying > 0) parts.push(`${liveStats.retrying} retrying`);
-    if (liveStats.tokens > 0) parts.push(`${fmtTokens(liveStats.tokens)} tok`);
-    if (parts.length > 0) statsStr = ` · ${parts.join(" · ")}`;
-  }
+  const statsStr = "";
 
   return (
     <box
@@ -261,7 +182,6 @@ function Header({
         <span fg={COLORS.textDim}>{statsStr}</span>
       </text>
       <text>
-        <span fg={connColor}>{connIndicator}</span>
         {status ? <span fg={COLORS.yellow}>  {status}</span> : null}
       </text>
     </box>
@@ -293,8 +213,6 @@ function PriorityBadge({ priority }: { priority: number | null }) {
 }
 
 function LiveStatusBadge({ issue }: { issue: Issue }) {
-  if (issue.liveStatus === "running") {
-    const elapsed = issue.elapsed_ms ? fmtElapsed(issue.elapsed_ms) : "";
     const tok =
       issue.tokens && issue.tokens.total > 0
         ? ` ${fmtTokens(issue.tokens.total)}t`
@@ -309,7 +227,6 @@ function LiveStatusBadge({ issue }: { issue: Issue }) {
       </text>
     );
   }
-  if (issue.liveStatus === "retrying") {
     const attemptStr = issue.attempt ? `#${issue.attempt}` : "";
     return (
       <text>
@@ -330,11 +247,8 @@ function IssueCard({
   isSelected: boolean;
   maxWidth: number;
 }) {
-  const hasLiveStatus = issue.liveStatus === "running" || issue.liveStatus === "retrying";
   const borderColor = isSelected
     ? COLORS.borderHighlight
-    : hasLiveStatus
-      ? issue.liveStatus === "running"
         ? COLORS.green
         : COLORS.yellow
       : COLORS.border;
@@ -355,7 +269,6 @@ function IssueCard({
         paddingLeft: 1,
         paddingRight: 1,
         width: "100%",
-        height: hasLiveStatus ? 5 : 4,
       }}
     >
       <box
@@ -373,7 +286,6 @@ function IssueCard({
         </text>
       </box>
       <text fg={COLORS.text}>{truncStr(issue.title, titleMaxLen)}</text>
-      {hasLiveStatus ? (
         <LiveStatusBadge issue={issue} />
       ) : null}
       {assignee ? (
@@ -458,7 +370,6 @@ function KanbanColumn({
   );
 }
 
-function Footer({ statusMsg, isLive }: { statusMsg: string; isLive: boolean }) {
   return (
     <box
       style={{
@@ -486,7 +397,6 @@ function Footer({ statusMsg, isLive }: { statusMsg: string; isLive: boolean }) {
         <span fg={COLORS.textDim}>d</span>
         <span fg={COLORS.text}> close </span>
         <span fg={COLORS.textDim}>r</span>
-        <span fg={COLORS.text}>{isLive ? " poll " : " refresh "}</span>
         <span fg={COLORS.textDim}>q</span>
         <span fg={COLORS.text}> quit</span>
       </text>
@@ -507,19 +417,13 @@ function KanbanApp({
   const [statusMsg, setStatusMsg] = useState("loading…");
   
   const overlayRef = useRef(false);
-  const [dataSource, setDataSource] = useState<DataSource>("static");
-  const [liveStats, setLiveStats] = useState<{
     running: number;
     retrying: number;
     tokens: number;
   } | null>(null);
 
   // Persistent client instance (survives re-renders)
-  const clientRef = useRef<OrchestratorClient | null>(null);
-  if (!clientRef.current) {
-    clientRef.current = new OrchestratorClient();
   }
-  const client = clientRef.current;
 
   const buckets = bucketIssues(issues);
 
@@ -530,22 +434,16 @@ function KanbanApp({
     const allIssues = await fetchAllIssues();
 
     // Try to get live orchestrator data
-    const snapshot = await client.fetchLiveState();
 
     if (snapshot) {
       // Enrich issues with live running/retrying status
-      const enriched = enrichWithLiveData(allIssues, snapshot);
       setIssues(enriched);
-      setDataSource("live");
-      setLiveStats({
         running: snapshot.counts.running,
         retrying: snapshot.counts.retrying,
         tokens: snapshot.totals.total_tokens,
       });
     } else {
       setIssues(allIssues);
-      setDataSource("static");
-      setLiveStats(null);
     }
 
     setStatusMsg("");
@@ -668,8 +566,6 @@ function KanbanApp({
       overlayRef.current = false;
     });
     // Pass the discovered API base so the overlay can fetch agent session data
-    const apiBase = client.getApiBase() ?? undefined;
-    await overlay.show(issue.id, apiBase);
   }, [getSelectedIssue, renderer, client]);
 
   const handleNewIssue = useCallback(() => {
@@ -698,8 +594,6 @@ function KanbanApp({
       case "r":
         setStatusMsg("refreshing…");
         // If live, trigger an immediate orchestrator poll cycle first
-        if (dataSource === "live") {
-          client.triggerRefresh().then(() => refresh());
         } else {
           refresh();
         }
@@ -801,8 +695,6 @@ function KanbanApp({
       <Header
         issueCount={issues.length}
         status={statusMsg}
-        dataSource={dataSource}
-        liveStats={liveStats}
       />
 
       {/* Kanban columns */}
@@ -828,7 +720,6 @@ function KanbanApp({
         })}
       </box>
 
-      <Footer statusMsg={statusMsg} isLive={dataSource === "live"} />
     </box>
   );
 }

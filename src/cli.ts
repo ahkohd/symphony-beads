@@ -11,7 +11,6 @@
 //   doctor    Verify dependencies, config, and runtime state
 //   logs      Tail the symphony log file
 //   stop      Stop a running symphony instance
-//   dashboard Launch the live agent status dashboard
 //
 // Global flags:
 //   --json          JSON output
@@ -32,7 +31,6 @@ import { WorkflowWatcher } from "./watcher.ts";
 import { log, setJsonMode, isJsonMode, setLogFile } from "./log.ts";
 import { PrMonitor } from "./pr-monitor.ts";
 import { runDoctor } from "./doctor.ts";
-import { HttpDashboard } from "./server.ts";
 import {
   acquireLock,
   releaseLock,
@@ -42,7 +40,6 @@ import {
   listInstances,
   readProjectLock,
   isPidAlive,
-  updateLockHttpInfo,
 } from "./lock.ts";
 
 const VERSION = "0.1.0";
@@ -53,8 +50,6 @@ interface Args {
   command: string;
   json: boolean;
   workflow: string;
-  port: number | null;
-  host: string;
   verbose: boolean;
   foreground: boolean;
   follow: boolean;
@@ -68,8 +63,6 @@ export function parseArgs(argv: string[]): Args {
     command: "",
     json: false,
     workflow: "WORKFLOW.md",
-    port: null,
-    host: "127.0.0.1",
     verbose: false,
     foreground: false,
     follow: false,
@@ -93,10 +86,6 @@ export function parseArgs(argv: string[]): Args {
         break;
       case "--verbose":
         args.verbose = true;
-        break;
-      case "--port":
-        args.port = parseInt(argv[++i] ?? "", 10);
-        if (isNaN(args.port) || args.port < 1) args.port = null;
         break;
       case "--foreground":
         args.foreground = true;
@@ -204,7 +193,6 @@ async function daemonize(args: Args, config: ReturnType<typeof parseWorkflow>["c
   if (args.json) childArgs.push("--json");
   if (args.workflow !== "WORKFLOW.md") childArgs.push("--workflow", args.workflow);
   if (args.verbose) childArgs.push("--verbose");
-  if (args.port !== null) childArgs.push("--port", String(args.port));
 
   // Spawn the daemon child. Use the same entry point (this script).
   // Both stdout and stderr share the same fd so all output goes to one log file.
@@ -348,23 +336,8 @@ async function cmdStartForeground(
   const prMonitor = new PrMonitor(config);
   prMonitor.start();
 
-  // Start optional HTTP dashboard (spec §13.7)
-  let httpDashboard: HttpDashboard | null = null;
-  const serverPort = args.port ?? config.server?.port ?? null;
-  if (serverPort) {
-    const httpHostname = config.server?.hostname ?? "127.0.0.1";
-    httpDashboard = new HttpDashboard(orchestrator, tracker, {
-      port: serverPort,
-      hostname: httpHostname,
-    });
-    httpDashboard.start();
-    // Write HTTP port to lock file so TUI can discover it
-    await updateLockHttpInfo(projectDir, serverPort, httpHostname);
-  }
-
   // Graceful shutdown with cleanup
   const shutdown = async () => {
-    httpDashboard?.stop();
     prMonitor.stop();
     watcher.stop();
     orchestrator.stop();
@@ -383,9 +356,6 @@ async function cmdStatus(args: Args): Promise<void> {
   const projectDir = resolve(dirname(args.workflow));
 
   // Try to fetch live orchestrator state (includes token counts)
-  const { OrchestratorClient } = await import("./tui/live-client.ts");
-  const client = new OrchestratorClient(projectDir);
-  const liveSnap = await client.fetchLiveState();
 
   if (liveSnap) {
     // Live orchestrator is running — show rich status with tokens
@@ -441,7 +411,6 @@ async function cmdStatus(args: Args): Promise<void> {
   if (args.json) {
     console.log(JSON.stringify(output, null, 2));
   } else {
-    log.info("issue status (static — no orchestrator running)", { candidates: output.candidates, terminal: output.terminal });
     for (const issue of output.issues) {
       console.log(`  ${issue.id}  P${issue.priority ?? "-"}  [${issue.state}]  ${issue.title}`);
     }
@@ -824,9 +793,7 @@ async function cmdTui(): Promise<void> {
 }
 
 async function cmdDashboard(args: Args): Promise<void> {
-  const { launchDashboard } = await import("./tui/dashboard.tsx");
   const projectDir = resolve(dirname(args.workflow));
-  await launchDashboard({ projectDir });
 }
 
 // -- Helpers -----------------------------------------------------------------
@@ -886,7 +853,6 @@ Commands:
   logs       Tail the symphony log file
   stop       Stop a running symphony instance
   kanban     Interactive kanban board
-  dashboard  Launch the live agent status dashboard
 
 Flags:
   --json           Output as JSON
@@ -1086,7 +1052,6 @@ async function main(): Promise<void> {
     case "kanban":
       await cmdTui();
       break;
-    case "dashboard":
       await cmdDashboard(args);
       break;
     case "":

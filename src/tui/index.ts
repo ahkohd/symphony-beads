@@ -9,7 +9,6 @@ export {
   formatCountdown,
   truncStr,
   formatTokens,
-} from "./dashboard.tsx";
 export { IssueDetailOverlay, showIssueDetail } from "./issue-detail-overlay.ts";
 export { NewIssueDialog, showNewIssueDialog } from "./new-issue-dialog.ts";
 export {
@@ -26,4 +25,3 @@ export {
   type LiveDashboardState,
   type StaticDashboardState,
   type StaticIssue,
-} from "./live-client.ts";
