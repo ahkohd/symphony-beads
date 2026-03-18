@@ -239,7 +239,12 @@ export class IssueDetailOverlay {
 
     // -- Footer --
     children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
-    children.push(Text({ content: " Esc close  \u2191\u2193/jk scroll", fg: COLORS.textDim }));
+    children.push(
+      Text({
+        content: " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page",
+        fg: COLORS.textDim,
+      }),
+    );
 
     // Filter out nulls
     const validChildren = children.filter((c): c is NonNullable<VChild> => c != null);
@@ -374,18 +379,39 @@ export class IssueDetailOverlay {
 
   // -- Key handling ----------------------------------------------------------
 
-  private scrollDetail(delta: number): void {
-    const scrollbox = this.overlayRoot?.getRenderable?.("issue-detail-scrollbox") as
-      | {
-          scrollBy?: (
-            delta: number | { x: number; y: number },
-            unit?: "absolute" | "viewport" | "content" | "step",
-          ) => void;
-        }
-      | null
-      | undefined;
+  private getDetailScrollbox(): {
+    scrollBy?: (
+      delta: number | { x: number; y: number },
+      unit?: "absolute" | "viewport" | "content" | "step",
+    ) => void;
+    viewport?: { height: number };
+  } | null {
+    return (
+      (this.overlayRoot?.getRenderable?.("issue-detail-scrollbox") as
+        | {
+            scrollBy?: (
+              delta: number | { x: number; y: number },
+              unit?: "absolute" | "viewport" | "content" | "step",
+            ) => void;
+            viewport?: { height: number };
+          }
+        | null
+        | undefined) ?? null
+    );
+  }
 
+  private scrollDetail(delta: number): void {
+    const scrollbox = this.getDetailScrollbox();
     scrollbox?.scrollBy?.(delta, "step");
+  }
+
+  private scrollHalfPage(direction: 1 | -1): void {
+    const scrollbox = this.getDetailScrollbox();
+    if (!scrollbox?.scrollBy) return;
+
+    const viewportHeight = scrollbox.viewport?.height ?? 0;
+    const delta = Math.max(1, Math.floor(viewportHeight / 2));
+    scrollbox.scrollBy(direction * delta, "step");
   }
 
   private installKeyHandler(): void {
@@ -398,6 +424,20 @@ export class IssueDetailOverlay {
         key.preventDefault();
         key.stopPropagation();
         this.close();
+        return;
+      }
+
+      if (key.ctrl && key.name === "d") {
+        key.preventDefault();
+        key.stopPropagation();
+        this.scrollHalfPage(1);
+        return;
+      }
+
+      if (key.ctrl && key.name === "u") {
+        key.preventDefault();
+        key.stopPropagation();
+        this.scrollHalfPage(-1);
         return;
       }
 
