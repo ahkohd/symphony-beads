@@ -2,6 +2,6 @@
   "database": "dolt",
   "backend": "dolt",
   "dolt_mode": "server",
-  "dolt_database": "symphony_beads",
-  "project_id": "eb4ca04b-52e4-4444-9254-9faefb42a07b"
+  "dolt_database": "symphony_beads_7s7",
+  "project_id": "e13a3b02-720c-4e6e-84bf-0e0c611f36d3"
 }
