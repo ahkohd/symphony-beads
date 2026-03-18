@@ -23,11 +23,11 @@ export class WorkspaceManager {
     const path = join(this.root, key);
     this.assertInRoot(path);
 
+    const hookEnv = { SYMPHONY_ISSUE_ID: identifier };
+
     let created = false;
     try {
       await mkdir(path, { recursive: true });
-      // mkdir with recursive doesn't tell us if it was new, so stat the dir
-      // We treat it as "created" the first time we see a marker file missing.
       const marker = Bun.file(join(path, ".symphony-init"));
       if (!(await marker.exists())) {
         await Bun.write(marker, new Date().toISOString());
@@ -39,9 +39,8 @@ export class WorkspaceManager {
     }
 
     if (created && this.hooks.after_create) {
-      const ok = await this.runHook("after_create", path, this.hooks.after_create);
+      const ok = await this.runHook("after_create", path, this.hooks.after_create, hookEnv);
       if (!ok) {
-        // Fatal — clean up partially created workspace
         await rm(path, { recursive: true, force: true }).catch(() => {});
         throw new Error(`after_create hook failed for ${identifier}`);
       }
@@ -73,15 +72,17 @@ export class WorkspaceManager {
   }
 
   /** Run before_run hook. Returns false on failure. */
-  async beforeRun(path: string): Promise<boolean> {
+  async beforeRun(path: string, identifier?: string): Promise<boolean> {
     if (!this.hooks.before_run) return true;
-    return this.runHook("before_run", path, this.hooks.before_run);
+    const env = identifier ? { SYMPHONY_ISSUE_ID: identifier } : undefined;
+    return this.runHook("before_run", path, this.hooks.before_run, env);
   }
 
   /** Run after_run hook. Failure is logged and ignored. */
-  async afterRun(path: string): Promise<void> {
+  async afterRun(path: string, identifier?: string): Promise<void> {
     if (!this.hooks.after_run) return;
-    await this.runHook("after_run", path, this.hooks.after_run);
+    const env = identifier ? { SYMPHONY_ISSUE_ID: identifier } : undefined;
+    await this.runHook("after_run", path, this.hooks.after_run, env);
   }
 
   /** Resolve workspace path without creating. */
@@ -98,11 +99,12 @@ export class WorkspaceManager {
     }
   }
 
-  private async runHook(name: string, cwd: string, script: string): Promise<boolean> {
+  private async runHook(name: string, cwd: string, script: string, env?: Record<string, string>): Promise<boolean> {
     log.debug("running hook", { hook: name, cwd });
     const result = await exec(["sh", "-lc", script], {
       cwd,
       timeout: this.hooks.timeout_ms,
+      env,
     });
     if (result.code !== 0) {
       log.warn("hook failed", {

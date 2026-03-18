@@ -9,7 +9,7 @@ const DEFAULTS: ServiceConfig = {
     kind: "beads",
     project_path: ".",
     active_states: ["open", "in_progress"],
-    terminal_states: ["done", "closed", "cancelled", "duplicate"],
+    terminal_states: ["closed", "cancelled", "duplicate"],
   },
   polling: { interval_ms: 30_000 },
   workspace: { root: "./workspaces" },

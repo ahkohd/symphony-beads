@@ -14,7 +14,7 @@ export interface ExecResult {
  */
 export async function exec(
   cmd: string[],
-  opts: { cwd?: string; timeout?: number; stdin?: string } = {},
+  opts: { cwd?: string; timeout?: number; stdin?: string; env?: Record<string, string> } = {},
 ): Promise<ExecResult> {
   try {
     const proc = Bun.spawn(cmd, {
@@ -22,6 +22,7 @@ export async function exec(
       stdout: "pipe",
       stderr: "pipe",
       stdin: opts.stdin !== undefined ? "pipe" : undefined,
+      env: opts.env ? { ...process.env, ...opts.env } : undefined,
     });
 
     if (opts.stdin !== undefined && proc.stdin) {

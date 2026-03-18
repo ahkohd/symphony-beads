@@ -36,7 +36,7 @@ export class AgentRunner {
     onEvent: EventCallback,
   ): Promise<void> {
     const ws = await workspace.ensure(issue.identifier);
-    const hookOk = await workspace.beforeRun(ws.path);
+    const hookOk = await workspace.beforeRun(ws.path, issue.identifier);
     if (!hookOk) {
       throw new Error("before_run hook failed");
     }
@@ -49,14 +49,19 @@ export class AgentRunner {
     onEvent({ kind: "session_started", session_id: sessionId });
 
     try {
-      await this.spawn(ws.path, prompt, issue.id);
+      const stdout = await this.spawn(ws.path, prompt, issue.id);
+      // Write agent output to workspace for human review
+      if (stdout.trim()) {
+        const resultFile = join(ws.path, "RESULT.md");
+        await Bun.write(resultFile, stdout);
+      }
       onEvent({ kind: "turn_completed", message: "exit 0" });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       onEvent({ kind: "turn_failed", message: msg });
       throw err;
     } finally {
-      await workspace.afterRun(ws.path);
+      await workspace.afterRun(ws.path, issue.identifier);
     }
   }
 
@@ -84,8 +89,8 @@ export class AgentRunner {
 
   // -- Private ---------------------------------------------------------------
 
-  private spawn(cwd: string, prompt: string, issueId: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
+  private spawn(cwd: string, prompt: string, issueId: string): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
       if (this.command.length === 0) {
         return reject(new Error("runner command is empty"));
       }
@@ -124,8 +129,11 @@ export class AgentRunner {
         if (timer) clearTimeout(timer);
         this.active.delete(issueId);
 
-        // Read stderr for diagnostics
-        const stderr = await new Response(proc.stderr).text();
+        // Read stdout and stderr
+        const [stdout, stderr] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+        ]);
         if (stderr.trim()) {
           log.debug("agent stderr", { issueId, stderr: stderr.slice(0, 1000) });
         }
@@ -135,7 +143,7 @@ export class AgentRunner {
         } else if (code !== 0) {
           reject(new Error(`agent exited with code ${code}`));
         } else {
-          resolve();
+          resolve(stdout);
         }
       });
     });

@@ -415,6 +415,12 @@ runner:
   stall_timeout_ms: 300000
 polling:
   interval_ms: 30000
+hooks:
+  after_create: |
+    git clone $REPO_URL . 2>/dev/null || true
+  before_run: |
+    git fetch origin 2>/dev/null || true
+    git checkout -B issue/$SYMPHONY_ISSUE_ID origin/HEAD 2>/dev/null || git checkout -B issue/$SYMPHONY_ISSUE_ID
 log:
   file: ./symphony.log
 ---
@@ -431,37 +437,29 @@ Labels: {{ issue.labels }}
 
 Follow these steps in order:
 
-### 1. Create a feature branch
-\`\`\`bash
-git checkout -b issue/{{ issue.identifier }}
-\`\`\`
-
-### 2. Implement the solution
+### 1. Implement the solution
+- You are on branch issue/{{ issue.identifier }}
 - Make the necessary code changes
 - Commit your work with clear, descriptive messages:
   \`\`\`bash
   git add -A
-  git commit -m "issue/{{ issue.identifier }}: <describe what changed>"
+  git commit -m "{{ issue.identifier }}: <describe what changed>"
   \`\`\`
 
-### 3. Push the branch
+### 2. Push and create a pull request
 \`\`\`bash
-git push origin HEAD
+git push -u origin HEAD
+gh pr create --title "{{ issue.identifier }}: {{ issue.title }}" --body "Resolves {{ issue.identifier }}" --fill 2>/dev/null || true
 \`\`\`
 
-### 4. Move the issue to review
+### 3. Hand off for review
 \`\`\`bash
 bd update {{ issue.identifier }} --status review
+bd comment {{ issue.identifier }} "PR pushed. Summary: <describe what was done>"
 \`\`\`
 
-### 5. Add a summary comment
-\`\`\`bash
-bd comment {{ issue.identifier }} "Summary of changes: <describe what was done and any notes for the reviewer>"
-\`\`\`
-
-**Important**: Do NOT mark the issue as done. Moving it to \`review\` hands it off
-to a human reviewer. The reviewer will either accept (move to done) or request
-rework (move back to open).
+**Important**: Do NOT mark the issue as done. Moving to \`review\` hands off to
+a human reviewer. They will merge the PR and mark done, or request rework.
 `;
 
 // -- Main --------------------------------------------------------------------
