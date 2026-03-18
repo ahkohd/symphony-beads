@@ -713,10 +713,10 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
   });
 
   const headerStatus = searchMode
-    ? `search: /${searchQuery}`
+    ? `search: ${searchQuery}`
     : statusMsg ||
       (searchQuery.trim()
-        ? `filter: /${searchQuery} (${filteredIssues.length}/${issues.length})`
+        ? `filter: ${searchQuery} (${filteredIssues.length}/${issues.length})`
         : "");
 
   // -- Render ----------------------------------------------------------------
