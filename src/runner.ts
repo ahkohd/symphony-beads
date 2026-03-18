@@ -185,7 +185,7 @@ export class AgentRunner {
 
       // For pi JSON mode: stream-parse stdout line-by-line for token events.
       // For non-pi runners: accumulate raw text.
-      const tokens: TokenCount = { input: 0, output: 0, total: 0 };
+      const tokens: TokenCount = { input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0, cost: 0 };
       const textParts: string[] = [];
       const rawChunks: string[] = [];
 
@@ -371,11 +371,17 @@ export function injectJsonMode(command: string[]): string[] {
  * Parse one JSON line from pi's --mode json output. Extracts token usage
  * from `message_end` events (assistant role) and text content from `turn_end`.
  *
- * Token usage on each assistant `message_end` represents that turn's API call
- * usage. We accumulate input/output across all turns.
+ * Pi's usage object includes:
+ *   - input: non-cached input tokens
+ *   - output: generated output tokens
+ *   - cacheRead: input tokens served from cache
+ *   - cacheWrite: input tokens written to cache
+ *   - totalTokens: input + output + cacheRead + cacheWrite
+ *   - cost: { input, output, cacheRead, cacheWrite, total }
  *
- * Also handles `session_end` events which contain the final cumulative
- * usage summary (input_tokens, output_tokens, total_cost).
+ * We accumulate all fields across turns. The `agent_end` event carries the
+ * final message list with per-message usage which we use as authoritative
+ * totals (replaces accumulated values).
  */
 export function parseJsonLine(
   line: string,
@@ -392,36 +398,54 @@ export function parseJsonLine(
     if (event.type === "message_end" && event.message?.role === "assistant") {
       const usage = event.message.usage;
       if (usage && typeof usage === "object") {
-        const input = typeof usage.input === "number" ? usage.input : 0;
-        const output = typeof usage.output === "number" ? usage.output : 0;
-        tokens.input += input;
-        tokens.output += output;
-        tokens.total = tokens.input + tokens.output;
-        onEvent({
-          kind: "token_update",
-          tokens: { input: tokens.input, output: tokens.output, total: tokens.total },
-        });
+        tokens.input += num(usage.input);
+        tokens.output += num(usage.output);
+        tokens.cache_read += num(usage.cacheRead);
+        tokens.cache_write += num(usage.cacheWrite);
+        tokens.total = tokens.input + tokens.output + tokens.cache_read + tokens.cache_write;
+        tokens.cost += num(usage.cost?.total);
+        emitTokenUpdate(tokens, onEvent);
       }
     }
 
+    // agent_end carries the full message list with per-message usage.
+    // This is the authoritative final accounting — replace accumulated values.
+    if (event.type === "agent_end" && Array.isArray(event.messages)) {
+      let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
+      for (const msg of event.messages) {
+        if (msg.role === "assistant" && msg.usage && typeof msg.usage === "object") {
+          input += num(msg.usage.input);
+          output += num(msg.usage.output);
+          cacheRead += num(msg.usage.cacheRead);
+          cacheWrite += num(msg.usage.cacheWrite);
+          cost += num(msg.usage.cost?.total);
+        }
+      }
+      // Authoritative — replace
+      tokens.input = input;
+      tokens.output = output;
+      tokens.cache_read = cacheRead;
+      tokens.cache_write = cacheWrite;
+      tokens.total = input + output + cacheRead + cacheWrite;
+      tokens.cost = cost;
+      emitTokenUpdate(tokens, onEvent);
+    }
+
     // Session-level cumulative usage from session_end / usage_summary events.
-    // These carry the authoritative totals for the entire session.
+    // Some runners may emit these — handle as authoritative if present.
     if (
       (event.type === "session_end" || event.type === "usage_summary") &&
       event.usage &&
       typeof event.usage === "object"
     ) {
       const u = event.usage;
-      const input = typeof u.input_tokens === "number" ? u.input_tokens : tokens.input;
-      const output = typeof u.output_tokens === "number" ? u.output_tokens : tokens.output;
-      // Authoritative — replace rather than accumulate
-      tokens.input = input;
-      tokens.output = output;
-      tokens.total = input + output;
-      onEvent({
-        kind: "token_update",
-        tokens: { input, output, total: input + output },
-      });
+      tokens.input = num(u.input_tokens) || num(u.input) || tokens.input;
+      tokens.output = num(u.output_tokens) || num(u.output) || tokens.output;
+      tokens.cache_read = num(u.cache_read_tokens) || num(u.cacheRead) || tokens.cache_read;
+      tokens.cache_write = num(u.cache_write_tokens) || num(u.cacheWrite) || tokens.cache_write;
+      tokens.total = tokens.input + tokens.output + tokens.cache_read + tokens.cache_write;
+      tokens.cost = num(u.total_cost) || num(u.cost?.total) || tokens.cost;
+      emitTokenUpdate(tokens, onEvent);
     }
 
     // Extract text content from turn_end for RESULT.md
@@ -438,6 +462,19 @@ export function parseJsonLine(
   } catch {
     // Not valid JSON — ignore (could be plain-text output from non-pi runners)
   }
+}
+
+/** Safely extract a number from a value, returning 0 for non-numbers. */
+function num(v: unknown): number {
+  return typeof v === "number" && !isNaN(v) ? v : 0;
+}
+
+/** Emit a token_update event with a snapshot of the current token state. */
+function emitTokenUpdate(tokens: TokenCount, onEvent: EventCallback): void {
+  onEvent({
+    kind: "token_update",
+    tokens: { ...tokens },
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -33,7 +33,10 @@ export class Orchestrator {
   private totals: AgentTotals = {
     input_tokens: 0,
     output_tokens: 0,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
     total_tokens: 0,
+    total_cost: 0,
     ended_seconds: 0,
   };
 
@@ -131,6 +134,12 @@ export class Orchestrator {
       activeSeconds += (now - e.started_at) / 1000;
     }
 
+    // Compute live cost from active sessions
+    let activeCost = 0;
+    for (const e of this.running.values()) {
+      activeCost += e.tokens.cost;
+    }
+
     return {
       generated_at: new Date().toISOString(),
       counts: {
@@ -143,6 +152,7 @@ export class Orchestrator {
       retrying: retryArr,
       totals: {
         ...this.totals,
+        total_cost: this.totals.total_cost + activeCost,
         seconds_running: this.totals.ended_seconds + activeSeconds,
       },
     };
@@ -252,7 +262,7 @@ export class Orchestrator {
       last_event: null,
       last_event_at: null,
       last_message: "",
-      tokens: { input: 0, output: 0, total: 0 },
+      tokens: { input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0, cost: 0 },
     };
     this.running.set(issue.id, entry);
 
@@ -297,7 +307,10 @@ export class Orchestrator {
     this.totals.ended_seconds += elapsed;
     this.totals.input_tokens += entry.tokens.input;
     this.totals.output_tokens += entry.tokens.output;
+    this.totals.cache_read_tokens += entry.tokens.cache_read;
+    this.totals.cache_write_tokens += entry.tokens.cache_write;
     this.totals.total_tokens += entry.tokens.total;
+    this.totals.total_cost += entry.tokens.cost;
     this.removeRunning(issueId);
 
     if (error) {
@@ -447,7 +460,10 @@ export interface OrchestratorSnapshot {
   totals: {
     input_tokens: number;
     output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
     total_tokens: number;
+    total_cost: number;
     seconds_running: number;
   };
 }
