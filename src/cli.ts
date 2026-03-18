@@ -11,6 +11,7 @@
 //   doctor    Verify dependencies, config, and runtime state
 //   logs      Tail the symphony log file
 //   stop      Stop a running symphony instance
+//   dashboard Launch the live agent status dashboard
 //
 // Global flags:
 //   --json          JSON output
@@ -20,7 +21,8 @@
 //   -v, --version    Show version
 // ---------------------------------------------------------------------------
 
-import { resolve, dirname } from "path";
+import { resolve, dirname, join, parse as parsePath } from "path";
+import { existsSync } from "fs";
 import { parseWorkflow, validateConfig } from "./config.ts";
 import { BeadsTracker } from "./tracker.ts";
 import { WorkspaceManager } from "./workspace.ts";
@@ -55,6 +57,7 @@ interface Args {
   verbose: boolean;
   foreground: boolean;
   follow: boolean;
+  shortF: boolean;
   lines: number;
   all: boolean;
 }
@@ -69,6 +72,7 @@ export function parseArgs(argv: string[]): Args {
     verbose: false,
     foreground: false,
     follow: false,
+    shortF: false,
     lines: 50,
     all: false,
   };
@@ -97,8 +101,7 @@ export function parseArgs(argv: string[]): Args {
         args.foreground = true;
         break;
       case "-f":
-        args.follow = true;
-        args.foreground = true; // -f: --follow for logs, --foreground for start
+        args.shortF = true; // resolved per-command in main(): start → foreground, logs → follow
         break;
       case "--follow":
         args.follow = true;
@@ -761,6 +764,12 @@ async function cmdTui(): Promise<void> {
   await launchTui();
 }
 
+async function cmdDashboard(args: Args): Promise<void> {
+  const { launchDashboard } = await import("./tui/dashboard.tsx");
+  const projectDir = resolve(dirname(args.workflow));
+  await launchDashboard({ projectDir });
+}
+
 // -- Helpers -----------------------------------------------------------------
 
 async function loadWorkflow(path: string) {
@@ -792,7 +801,8 @@ Commands:
   doctor     Verify dependencies, config, and runtime state
   logs       Tail the symphony log file
   stop       Stop a running symphony instance
-  tui        Launch the interactive terminal UI
+  tui        Launch the interactive terminal UI (kanban board)
+  dashboard  Launch the live agent status dashboard
 
 Flags:
   --json           Output as JSON
@@ -847,7 +857,7 @@ hooks:
     rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
     echo "node_modules" >> .gitignore
     bun install 2>/dev/null || npm install 2>/dev/null || true
-    cat > AGENTS.md << 'AGENTS'
+    cat >> AGENTS.md << 'AGENTS'
     # Guidelines
     - Work ONLY within this directory. Do not read or write files outside of it.
     - Do not cd to parent directories or access ../
@@ -906,11 +916,62 @@ bd comment {{ issue.identifier }} "PR pushed. Summary: <describe what was done>"
 a human reviewer. They will merge the PR and mark done, or request rework.
 `;
 
+// -- Project root discovery ---------------------------------------------------
+
+/**
+ * Walk up from startDir looking for a project root marker (.git, .jj, or
+ * WORKFLOW.md). Returns the directory containing the first marker found,
+ * or startDir itself if no marker is found.
+ */
+export function findProjectRoot(startDir: string): string {
+  let dir = resolve(startDir);
+  while (true) {
+    // Check for project root markers
+    if (
+      existsSync(join(dir, ".git")) ||
+      existsSync(join(dir, ".jj")) ||
+      existsSync(join(dir, "WORKFLOW.md"))
+    ) {
+      return dir;
+    }
+
+    const parent = parsePath(dir).dir;
+    if (parent === dir) {
+      // Reached filesystem root without finding a marker
+      return resolve(startDir);
+    }
+    dir = parent;
+  }
+}
+
 // -- Main --------------------------------------------------------------------
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.json) setJsonMode(true);
+
+  // Resolve -f shorthand based on command context
+  if (args.shortF) {
+    if (args.command === "start") {
+      args.foreground = true;
+    } else if (args.command === "logs") {
+      args.follow = true;
+    } else {
+      // Default: treat -f as foreground for unknown commands
+      args.foreground = true;
+    }
+  }
+
+  // Auto-discover project root: if WORKFLOW.md doesn't exist in cwd, walk up
+  if (args.workflow === "WORKFLOW.md") {
+    if (!existsSync(resolve(args.workflow))) {
+      const root = findProjectRoot(process.cwd());
+      const candidate = resolve(root, "WORKFLOW.md");
+      if (existsSync(candidate)) {
+        args.workflow = candidate;
+      }
+    }
+  }
 
   switch (args.command) {
     case "start":
@@ -939,6 +1000,9 @@ async function main(): Promise<void> {
       break;
     case "tui":
       await cmdTui();
+      break;
+    case "dashboard":
+      await cmdDashboard(args);
       break;
     case "":
       error("no command specified");

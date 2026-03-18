@@ -17,6 +17,8 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     state: "open",
     labels: [],
     blocked_by: [],
+    issue_type: null,
+    metadata: null,
     created_at: null,
     updated_at: null,
     ...overrides,

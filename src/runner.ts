@@ -12,17 +12,51 @@ import { log } from "./log.ts";
 export type EventCallback = (event: AgentEvent) => void;
 
 export class AgentRunner {
-  private command: string[];
+  private commandTemplate: string;
+  private model: string | null;
+  private models: Record<string, string> | null;
   private turnTimeout: number;
   private active: Map<string, Subprocess> = new Map();
 
   constructor(config: RunnerConfig) {
-    const parts = config.command.split(/\s+/).filter(Boolean);
-    if (config.model) {
-      parts.push("--model", config.model);
-    }
-    this.command = parts;
+    this.commandTemplate = config.command;
+    this.model = config.model;
+    this.models = config.models;
     this.turnTimeout = config.turn_timeout_ms;
+  }
+
+  /**
+   * Build the command array for a given issue, resolving model routing.
+   * Returns { command, env } where env contains SYMPHONY_MODEL if resolved.
+   */
+  private buildCommand(issue: Issue): { command: string[]; env: Record<string, string> } {
+    const resolved = resolveModel(issue, this.models);
+    const env: Record<string, string> = { ...process.env } as Record<string, string>;
+
+    let cmdStr = this.commandTemplate;
+
+    if (resolved) {
+      // Set env var for the spawned process
+      env.SYMPHONY_MODEL = resolved;
+      // Substitute $SYMPHONY_MODEL in the command template
+      cmdStr = cmdStr.replace(/\$SYMPHONY_MODEL\b/g, resolved);
+      cmdStr = cmdStr.replace(/\$\{SYMPHONY_MODEL\}/g, resolved);
+    } else {
+      // No model resolved — remove $SYMPHONY_MODEL references to avoid
+      // passing a literal "$SYMPHONY_MODEL" string as an argument
+      delete env.SYMPHONY_MODEL;
+      cmdStr = cmdStr.replace(/\$SYMPHONY_MODEL\b/g, "");
+      cmdStr = cmdStr.replace(/\$\{SYMPHONY_MODEL\}/g, "");
+    }
+
+    const parts = cmdStr.split(/\s+/).filter(Boolean);
+
+    // Legacy support: if config.model is set (no models map), append --model
+    if (!this.models && this.model) {
+      parts.push("--model", this.model);
+    }
+
+    return { command: parts, env };
   }
 
   /**
@@ -63,7 +97,7 @@ export class AgentRunner {
     onEvent({ kind: "session_started", session_id: sessionId });
 
     try {
-      const stdout = await this.spawn(ws.path, prompt, issue.id);
+      const stdout = await this.spawn(ws.path, prompt, issue);
       // Write agent output to workspace for human review
       if (stdout.trim()) {
         const resultFile = join(ws.path, "RESULT.md");
@@ -103,21 +137,30 @@ export class AgentRunner {
 
   // -- Private ---------------------------------------------------------------
 
-  private spawn(cwd: string, prompt: string, issueId: string): Promise<string> {
+  private spawn(cwd: string, prompt: string, issue: Issue): Promise<string> {
+    const issueId = issue.id;
     return new Promise<string>((resolve, reject) => {
-      if (this.command.length === 0) {
+      const { command, env } = this.buildCommand(issue);
+
+      if (command.length === 0) {
         return reject(new Error("runner command is empty"));
       }
 
       // Pass prompt as argument — allows pi to use tools (bash, edit, write)
       // instead of just printing. The prompt is also written to TASK.md as context.
-      const fullCommand = [...this.command, prompt];
-      log.debug("spawning agent", { issueId, command: this.command.join(" "), cwd });
+      const fullCommand = [...command, prompt];
+      log.debug("spawning agent", {
+        issueId,
+        command: command.join(" "),
+        cwd,
+        model: env.SYMPHONY_MODEL ?? null,
+      });
 
       const proc = Bun.spawn(fullCommand, {
         cwd,
         stdout: "pipe",
         stderr: "pipe",
+        env,
       });
 
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -237,4 +280,54 @@ async function fetchPrReviewFeedback(
 interface Subprocess {
   proc: ReturnType<typeof Bun.spawn>;
   timer: ReturnType<typeof setTimeout> | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Model resolution — exported for testing
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the model for an issue based on the models map.
+ *
+ * Resolution order:
+ * 1. Per-issue metadata override (`metadata.model`)
+ * 2. Issue type match (bug, feature, chore, etc.)
+ * 3. Priority match (P0, P1, P2, P3, P4)
+ * 4. Default model (`default` key)
+ *
+ * First match wins. Returns null if no models map or no match.
+ */
+export function resolveModel(
+  issue: Issue,
+  models: Record<string, string> | null,
+): string | null {
+  if (!models) return null;
+
+  // 1. Per-issue metadata override
+  if (issue.metadata?.model) {
+    return issue.metadata.model;
+  }
+
+  // 2. Issue type match
+  if (issue.issue_type) {
+    const typeKey = issue.issue_type.toLowerCase();
+    if (models[typeKey]) {
+      return models[typeKey]!;
+    }
+  }
+
+  // 3. Priority match (P0-P4)
+  if (issue.priority !== null && issue.priority !== undefined) {
+    const priorityKey = `P${issue.priority}`;
+    if (models[priorityKey]) {
+      return models[priorityKey]!;
+    }
+  }
+
+  // 4. Default
+  if (models.default) {
+    return models.default;
+  }
+
+  return null;
 }
