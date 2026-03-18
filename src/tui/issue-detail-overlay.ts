@@ -336,10 +336,11 @@ export class IssueDetailOverlay {
   }
 
   private buildDivider(): VChild {
-    return Box({
-      height: 1,
-      width: "100%",
-      backgroundColor: COLORS.border,
+    return Text({
+      content: "\u2500".repeat(300),
+      fg: COLORS.border,
+      wrapMode: "none",
+      truncate: true,
     });
   }
 
