@@ -2,9 +2,10 @@
 // TUI Kanban Board — issue management view using OpenTUI React
 //
 // Five-column kanban layout (Open, In Progress, Review, Closed, Deferred).
-// Arrow keys to navigate cards, Enter for details, m/M to move status,
-// b to send to backlog (deferred), B to promote from backlog to open,
-// n for issue-creation guidance, d to close/delete.
+// Arrow keys or vim keys (h/j/k/l) navigate cards, Enter for details,
+// m/M to move status, b to send to backlog (deferred),
+// B to promote from backlog to open, n for issue-creation guidance,
+// d to close/delete.
 //
 // ---------------------------------------------------------------------------
 
@@ -313,9 +314,9 @@ function Footer() {
       }}
     >
       <text>
-        <span fg={COLORS.textDim}>←→</span>
+        <span fg={COLORS.textDim}>←→ / h l</span>
         <span fg={COLORS.text}> col </span>
-        <span fg={COLORS.textDim}>↑↓</span>
+        <span fg={COLORS.textDim}>↑↓ / j k</span>
         <span fg={COLORS.text}> card </span>
         <span fg={COLORS.textDim}>Enter</span>
         <span fg={COLORS.text}> detail </span>
@@ -499,6 +500,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
         break;
 
       case "left":
+      case "h":
         setCursor((prev) => {
           const newCol = Math.max(0, prev.col - 1);
           const colKey = COLUMNS[newCol]!.key;
@@ -509,6 +511,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
         break;
 
       case "right":
+      case "l":
         setCursor((prev) => {
           const newCol = Math.min(COLUMNS.length - 1, prev.col + 1);
           const colKey = COLUMNS[newCol]!.key;
@@ -519,6 +522,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
         break;
 
       case "up":
+      case "k":
         setCursor((prev) => ({
           ...prev,
           row: Math.max(0, prev.row - 1),
@@ -526,6 +530,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
         break;
 
       case "down":
+      case "j":
         setCursor((prev) => {
           const colKey = COLUMNS[prev.col]!.key;
           const items = buckets.get(colKey) ?? [];
