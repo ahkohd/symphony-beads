@@ -78,6 +78,7 @@ export class IssueDetailOverlay {
   private overlayRoot: Renderable | null = null;
   private keyHandler: ((key: KeyEvent) => void) | null = null;
   private onCloseCallback: (() => void) | null = null;
+  private showToken = 0;
 
   constructor(renderer: CliRenderer) {
     this.renderer = renderer;
@@ -93,14 +94,23 @@ export class IssueDetailOverlay {
    * @param issueId — The issue identifier to display.
    */
   async show(issueId: string): Promise<void> {
-    // Close any existing overlay first
-    this.close();
+    this.teardown(false);
+    const token = ++this.showToken;
 
-    // Fetch data in parallel
+    // Render a loading shell immediately so Esc works even while data is fetching.
+    this.renderLoading(issueId);
+
     const [issue, comments] = await Promise.all([
       fetchIssueDetail(issueId),
       fetchIssueComments(issueId),
     ]);
+
+    // Overlay was closed or superseded while we were fetching.
+    if (token !== this.showToken || !this.isVisible) {
+      return;
+    }
+
+    this.teardown(false);
 
     if (!issue) {
       this.renderError(issueId);
@@ -112,24 +122,68 @@ export class IssueDetailOverlay {
 
   /** Close the overlay and clean up. */
   close(): void {
-    if (this.keyHandler) {
-      this.renderer.keyInput.off("keypress", this.keyHandler);
-      this.keyHandler = null;
-    }
-    if (this.overlayRoot) {
-      this.renderer.root.remove(this.overlayRoot.id);
-      this.overlayRoot = null;
-    }
-    if (this.onCloseCallback) {
-      this.onCloseCallback();
-    }
+    this.showToken += 1;
+    this.teardown(true);
   }
 
   get isVisible(): boolean {
     return this.overlayRoot !== null;
   }
 
+  private teardown(notifyClose: boolean): void {
+    const wasVisible = this.overlayRoot !== null || this.keyHandler !== null;
+
+    if (this.keyHandler) {
+      this.renderer.keyInput.off("keypress", this.keyHandler);
+      this.keyHandler = null;
+    }
+
+    if (this.overlayRoot) {
+      this.renderer.root.remove(this.overlayRoot.id);
+      this.overlayRoot = null;
+    }
+
+    if (notifyClose && wasVisible) {
+      this.onCloseCallback?.();
+    }
+  }
+
   // -- Rendering -------------------------------------------------------------
+
+  private renderLoading(issueId: string): void {
+    const overlay = Box(
+      {
+        id: "issue-detail-overlay",
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: "100%",
+        backgroundColor: COLORS.bgOverlay,
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 100,
+      },
+      Box(
+        {
+          borderStyle: "rounded",
+          borderColor: COLORS.border,
+          backgroundColor: COLORS.surface,
+          padding: 2,
+          flexDirection: "column",
+          gap: 1,
+          width: "50%",
+          maxHeight: "50%",
+        },
+        Text({ content: `Loading ${issueId}…`, fg: COLORS.accent }),
+        Text({ content: "Press Esc to close", fg: COLORS.textDim }),
+      ),
+    );
+
+    this.renderer.root.add(overlay);
+    this.overlayRoot = this.renderer.root.getRenderable("issue-detail-overlay") ?? null;
+    this.installKeyHandler();
+  }
 
   private renderError(issueId: string): void {
     const overlay = Box(
@@ -408,12 +462,22 @@ export async function showIssueDetail(issueId: string): Promise<void> {
   });
 
   const overlay = new IssueDetailOverlay(renderer);
-  await overlay.show(issueId);
 
   return new Promise<void>((resolve) => {
-    overlay.onClose(() => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
       renderer.destroy();
       resolve();
+    };
+
+    overlay.onClose(finish);
+
+    void overlay.show(issueId).then(() => {
+      if (!overlay.isVisible) {
+        finish();
+      }
     });
   });
 }
