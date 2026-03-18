@@ -505,7 +505,7 @@ function KanbanApp({
   const [issues, setIssues] = useState<Issue[]>([]);
   const [cursor, setCursor] = useState<CursorPos>({ col: 0, row: 0 });
   const [statusMsg, setStatusMsg] = useState("loading…");
-  const [overlayActive, setOverlayActive] = useState(false);
+  
   const overlayRef = useRef(false);
   const [dataSource, setDataSource] = useState<DataSource>("static");
   const [liveStats, setLiveStats] = useState<{
@@ -661,11 +661,11 @@ function KanbanApp({
   const handleShowDetail = useCallback(async () => {
     const issue = getSelectedIssue();
     if (!issue) return;
-    overlayRef.current = true; setOverlayActive(true);
+    overlayRef.current = true;
     const overlay = new IssueDetailOverlay(renderer);
     overlay.onClose(() => {
       // Delay ref reset so the same Esc keypress doesn't also exit the app
-      setTimeout(() => { overlayRef.current = false; setOverlayActive(false); }, 50);
+      overlayRef.current = false;
     });
     // Pass the discovered API base so the overlay can fetch agent session data
     const apiBase = client.getApiBase() ?? undefined;
@@ -673,10 +673,10 @@ function KanbanApp({
   }, [getSelectedIssue, renderer, client]);
 
   const handleNewIssue = useCallback(() => {
-    overlayRef.current = true; setOverlayActive(true);
+    overlayRef.current = true;
     const dialog = new NewIssueDialog(renderer);
     dialog.onClose(() => {
-      setTimeout(() => { overlayRef.current = false; setOverlayActive(false); }, 50);
+      overlayRef.current = false;
     });
     dialog.onCreated(() => {
       refresh();
