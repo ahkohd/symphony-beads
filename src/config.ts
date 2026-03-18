@@ -26,7 +26,7 @@ const DEFAULTS: ServiceConfig = {
     max_retry_backoff_ms: 300_000,
   },
   runner: {
-    command: "pi -p --no-session",
+    command: "pi --no-session",
     model: null,
     turn_timeout_ms: 3_600_000,
     stall_timeout_ms: 300_000,

@@ -748,6 +748,11 @@ async function cmdLogs(args: Args): Promise<void> {
   }
 }
 
+async function cmdTui(): Promise<void> {
+  const { launchTui } = await import("./tui/app.tsx");
+  await launchTui();
+}
+
 // -- Helpers -----------------------------------------------------------------
 
 async function loadWorkflow(path: string) {
@@ -779,6 +784,7 @@ Commands:
   doctor     Verify dependencies, config, and runtime state
   logs       Tail the symphony log file
   stop       Stop a running symphony instance
+  tui        Launch the interactive terminal UI
 
 Flags:
   --json           Output as JSON
@@ -822,7 +828,7 @@ agent:
   max_concurrent: 5
   max_turns: 20
 runner:
-  command: pi -p --no-session
+  command: pi --no-session
   turn_timeout_ms: 3600000
   stall_timeout_ms: 300000
 polling:

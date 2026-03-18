@@ -109,13 +109,15 @@ export class AgentRunner {
         return reject(new Error("runner command is empty"));
       }
 
+      // Pass prompt as argument — allows pi to use tools (bash, edit, write)
+      // instead of just printing. The prompt is also written to TASK.md as context.
+      const fullCommand = [...this.command, prompt];
       log.debug("spawning agent", { issueId, command: this.command.join(" "), cwd });
 
-      const proc = Bun.spawn(this.command, {
+      const proc = Bun.spawn(fullCommand, {
         cwd,
         stdout: "pipe",
         stderr: "pipe",
-        stdin: "pipe",
       });
 
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -123,12 +125,6 @@ export class AgentRunner {
 
       const sub: Subprocess = { proc, timer: undefined };
       this.active.set(issueId, sub);
-
-      // Feed prompt via stdin then close
-      if (proc.stdin) {
-        proc.stdin.write(new TextEncoder().encode(prompt));
-        proc.stdin.end();
-      }
 
       // Timeout guard
       if (this.turnTimeout > 0) {

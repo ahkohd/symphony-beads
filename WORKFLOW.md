@@ -8,7 +8,7 @@ agent:
   max_concurrent: 5
   max_turns: 20
 runner:
-  command: pi -p --no-session
+  command: pi --no-session
   turn_timeout_ms: 7200000
   stall_timeout_ms: 7200000
 polling:

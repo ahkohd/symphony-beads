@@ -175,11 +175,9 @@ export class NewIssueDialog {
     // Build the title input
     const titleInput = Input({
       id: "new-issue-title",
-      focusable: true,
       value: this.titleValue,
       placeholder: "Issue title (required)",
       width: "100%",
-      height: 1,
       backgroundColor: COLORS.surface,
       textColor: COLORS.text,
       focusedBackgroundColor: COLORS.bg,
@@ -190,11 +188,9 @@ export class NewIssueDialog {
     // Build the description input
     const descInput = Input({
       id: "new-issue-description",
-      focusable: true,
       value: this.descriptionValue,
       placeholder: "Description (optional)",
       width: "100%",
-      height: 1,
       backgroundColor: COLORS.surface,
       textColor: COLORS.text,
       focusedBackgroundColor: COLORS.bg,
@@ -205,7 +201,6 @@ export class NewIssueDialog {
     // Build the priority select
     const prioritySelect = Select({
       id: "new-issue-priority",
-      focusable: true,
       options: PRIORITY_OPTIONS,
       selectedIndex: this.priorityIndex,
       height: 5,
@@ -223,7 +218,6 @@ export class NewIssueDialog {
     // Build the type select
     const typeSelect = Select({
       id: "new-issue-type",
-      focusable: true,
       options: TYPE_OPTIONS,
       selectedIndex: this.typeIndex,
       height: 4,
