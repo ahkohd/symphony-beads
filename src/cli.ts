@@ -442,12 +442,6 @@ async function cmdStatus(args: Args): Promise<void> {
   }
 }
 
-async function fetchLiveSnapshot(_projectDir: string): Promise<OrchestratorSnapshot | null> {
-  // Live status transport is optional. When unavailable, status falls back to
-  // querying beads directly.
-  return null;
-}
-
 function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
@@ -461,6 +455,17 @@ function fmtDuration(ms: number): string {
   if (m < 60) return `${m}m ${s % 60}s`;
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
+}
+
+async function fetchLiveSnapshot(projectDir: string): Promise<OrchestratorSnapshot | null> {
+  const lock = await readProjectLock(projectDir);
+  if (!lock || !isPidAlive(lock.pid)) {
+    return null;
+  }
+
+  // Reserved for future status endpoint integration.
+  // Current lock metadata does not expose a live snapshot endpoint.
+  return null;
 }
 
 async function cmdValidate(args: Args): Promise<void> {
