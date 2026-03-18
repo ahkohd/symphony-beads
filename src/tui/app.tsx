@@ -3,10 +3,10 @@
 //
 // Five-column kanban layout (Open, In Progress, Review, Closed, Deferred).
 // Arrow keys or vim keys (h/j/k/l) navigate cards, Enter for details,
-// / to search/filter cards, m/M to move status,
-// b to send to backlog (deferred), B to promote from backlog to open,
-// s to sort current column, n for issue-creation guidance,
-// d to close/delete.
+// mouse click selects columns/cards, / searches/filter cards,
+// m/M moves status, b sends to backlog (deferred),
+// B promotes from backlog to open, s sorts current column,
+// n opens issue-creation guidance, d closes/deletes.
 //
 // ---------------------------------------------------------------------------
 
@@ -259,13 +259,28 @@ function PriorityBadge({ priority }: { priority: number | null }) {
   return <span fg={badge.color}>{badge.label}</span>;
 }
 
-function IssueCard({ issue, isSelected }: { issue: Issue; isSelected: boolean }) {
+function IssueCard({
+  issue,
+  isSelected,
+  onSelect,
+}: {
+  issue: Issue;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
   const borderColor = isSelected ? COLORS.borderHighlight : COLORS.border;
   const bgColor = isSelected ? COLORS.surface : COLORS.bg;
   const assignee = issue.owner ? truncStr(issue.owner.replace(/^agent@/, "@"), 16) : "";
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: OpenTUI box supports mouse handlers.
     <box
+      onMouseDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect();
+      }}
       style={{
         flexDirection: "column",
         borderStyle: "rounded",
@@ -304,17 +319,27 @@ function KanbanColumn({
   issues,
   selectedRow,
   isActiveColumn,
+  onSelectColumn,
+  onSelectCard,
 }: {
   label: string;
   color: string;
   issues: Issue[];
   selectedRow: number;
   isActiveColumn: boolean;
+  onSelectColumn: () => void;
+  onSelectCard: (row: number) => void;
 }) {
   const headerBorderColor = isActiveColumn ? color : COLORS.border;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: OpenTUI box supports mouse handlers.
     <box
+      onMouseDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        onSelectColumn();
+      }}
       style={{
         flexDirection: "column",
         flexGrow: 1,
@@ -362,6 +387,7 @@ function KanbanColumn({
               key={issue.id}
               issue={issue}
               isSelected={isActiveColumn && idx === selectedRow}
+              onSelect={() => onSelectCard(idx)}
             />
           ))
         )}
@@ -387,6 +413,8 @@ function Footer() {
         <span fg={COLORS.text}> col </span>
         <span fg={COLORS.textDim}>↑↓ / j k</span>
         <span fg={COLORS.text}> card </span>
+        <span fg={COLORS.textDim}>click</span>
+        <span fg={COLORS.text}> select </span>
         <span fg={COLORS.textDim}>Enter</span>
         <span fg={COLORS.text}> detail </span>
         <span fg={COLORS.textDim}>m/M</span>
@@ -451,6 +479,32 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     const items = buckets.get(colKey) ?? [];
     return items[cursor.row] ?? null;
   }, [cursor, buckets]);
+
+  const handleSelectColumn = useCallback(
+    (colIdx: number) => {
+      setCursor((prev) => {
+        const colKey = COLUMNS[colIdx]?.key;
+        if (!colKey) return prev;
+        const items = buckets.get(colKey) ?? [];
+        const row = items.length > 0 ? Math.min(prev.row, items.length - 1) : 0;
+        return { col: colIdx, row };
+      });
+    },
+    [buckets],
+  );
+
+  const handleSelectCard = useCallback(
+    (colIdx: number, rowIdx: number) => {
+      setCursor((prev) => {
+        const colKey = COLUMNS[colIdx]?.key;
+        if (!colKey) return prev;
+        const items = buckets.get(colKey) ?? [];
+        const row = items.length > 0 ? Math.max(0, Math.min(rowIdx, items.length - 1)) : 0;
+        return { col: colIdx, row };
+      });
+    },
+    [buckets],
+  );
 
   // -- Actions ---------------------------------------------------------------
 
@@ -749,6 +803,8 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
               issues={items}
               selectedRow={cursor.row}
               isActiveColumn={cursor.col === colIdx}
+              onSelectColumn={() => handleSelectColumn(colIdx)}
+              onSelectCard={(row) => handleSelectCard(colIdx, row)}
             />
           );
         })}
