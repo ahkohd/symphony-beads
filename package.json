@@ -12,6 +12,7 @@
     "lint": "bunx biome check src/",
     "lint:fix": "bunx biome check --fix src/",
     "fmt": "bunx biome format --write src/",
+    "fmt:check": "bunx biome format --check src/",
     "typecheck": "bun x tsc --noEmit",
     "check": "bun run lint && bun run typecheck && bun test"
   },
