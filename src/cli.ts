@@ -36,7 +36,7 @@ import {
   unregisterInstance,
 } from "./lock.ts";
 import { isJsonMode, log, setJsonMode, setLogFile } from "./log.ts";
-import { Orchestrator } from "./orchestrator.ts";
+import { Orchestrator, type OrchestratorSnapshot } from "./orchestrator.ts";
 import { PrMonitor } from "./pr-monitor.ts";
 import { BeadsTracker } from "./tracker.ts";
 import type { ServiceConfig } from "./types.ts";
@@ -365,9 +365,10 @@ async function cmdStartForeground(
 
 async function cmdStatus(args: Args): Promise<void> {
   const workflow = await loadWorkflow(args.workflow);
-  const _projectDir = resolve(dirname(args.workflow));
+  const projectDir = resolve(dirname(args.workflow));
 
   // Try to fetch live orchestrator state (includes token counts)
+  const liveSnap = await fetchLiveSnapshot(projectDir);
 
   if (liveSnap) {
     // Live orchestrator is running — show rich status with tokens
@@ -439,6 +440,12 @@ async function cmdStatus(args: Args): Promise<void> {
       console.log("  (no active issues)");
     }
   }
+}
+
+async function fetchLiveSnapshot(_projectDir: string): Promise<OrchestratorSnapshot | null> {
+  // Live status transport is optional. When unavailable, status falls back to
+  // querying beads directly.
+  return null;
 }
 
 function fmtTokens(n: number): string {

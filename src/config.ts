@@ -36,10 +36,6 @@ const DEFAULTS: ServiceConfig = {
   log: {
     file: null,
   },
-  server: {
-    port: null,
-    hostname: "127.0.0.1",
-  },
 };
 
 const DEFAULT_PROMPT = `You are working on a Beads issue.
@@ -103,7 +99,6 @@ export function parseWorkflow(content: string): WorkflowDefinition {
     merge(cfg, "agent", raw);
     merge(cfg, "runner", raw);
     merge(cfg, "log", raw);
-    merge(cfg, "server", raw);
   }
 
   resolveEnv(config);

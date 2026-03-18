@@ -26,9 +26,8 @@ export async function exec(
     });
 
     if (opts.stdin !== undefined && proc.stdin) {
-      const writer = proc.stdin.getWriter();
-      await writer.write(new TextEncoder().encode(opts.stdin));
-      await writer.close();
+      proc.stdin.write(opts.stdin);
+      proc.stdin.end();
     }
 
     let killed = false;
