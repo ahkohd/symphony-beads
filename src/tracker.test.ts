@@ -27,7 +27,7 @@ function makeConfig(overrides: Partial<ServiceConfig["tracker"]> = {}): ServiceC
       ...overrides,
     },
     polling: { interval_ms: 30000 },
-    workspace: { root: "./workspaces" },
+    workspace: { root: "./workspaces", repo: null, remote: "origin" },
     hooks: {
       after_create: null,
       before_run: null,
@@ -35,8 +35,19 @@ function makeConfig(overrides: Partial<ServiceConfig["tracker"]> = {}): ServiceC
       before_remove: null,
       timeout_ms: 60000,
     },
-    agent: { max_concurrent: 5, max_turns: 20, max_retry_backoff_ms: 300000 },
-    runner: { command: "pi -p", model: null, turn_timeout_ms: 3600000, stall_timeout_ms: 300000 },
+    agent: {
+      max_concurrent: 5,
+      max_concurrent_by_state: null,
+      max_turns: 20,
+      max_retry_backoff_ms: 300000,
+    },
+    runner: {
+      command: "pi -p",
+      model: null,
+      models: null,
+      turn_timeout_ms: 3600000,
+      stall_timeout_ms: 300000,
+    },
     log: { file: null },
   };
 }
