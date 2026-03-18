@@ -692,7 +692,6 @@ function KanbanApp({
 
     switch (key.name) {
       case "q":
-      case "escape":
         renderer.destroy(); process.exit(0);
         break;
 
