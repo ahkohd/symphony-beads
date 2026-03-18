@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { findProjectRoot, parseArgs, resolveConfigPaths } from "./cli.ts";
@@ -16,15 +16,24 @@ const CLI_PATH = resolve(import.meta.dir, "cli.ts");
  * Uses a temp directory with a minimal WORKFLOW.md so we don't interfere with
  * the real project.
  */
+interface RunCliOptions {
+  cwd: string;
+  timeout?: number;
+  env?: Record<string, string>;
+}
+
 async function runCli(
   args: string[],
-  opts: { cwd: string; timeout?: number } = { cwd: process.cwd() },
+  opts: RunCliOptions = { cwd: process.cwd() },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(["bun", CLI_PATH, ...args], {
     cwd: opts.cwd,
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      ...(opts.env ?? {}),
+    },
   });
 
   const timeout = opts.timeout ?? 10_000;
@@ -39,6 +48,34 @@ async function runCli(
   ]);
 
   return { stdout, stderr, exitCode };
+}
+
+async function setupMockBd(
+  dir: string,
+  issues: Array<{ id: string; title: string; status: string; priority: number }>,
+): Promise<string> {
+  const binDir = join(dir, "bin");
+  await mkdir(binDir, { recursive: true });
+
+  const scriptPath = join(binDir, "bd");
+  const payload = JSON.stringify(issues);
+  const script = `#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -ge 2 ] && [ "$1" = "list" ] && [ "$2" = "--json" ]; then
+  cat <<'JSON'
+${payload}
+JSON
+  exit 0
+fi
+
+echo "unsupported bd args: $*" >&2
+exit 1
+`;
+
+  await writeFile(scriptPath, script);
+  await chmod(scriptPath, 0o755);
+  return binDir;
 }
 
 // -- Test setup: temp directory with a minimal WORKFLOW.md --------------------
@@ -211,6 +248,149 @@ describe("CLI validate", () => {
       cwd: tempDir,
     });
     expect(exitCode).not.toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Status subcommand
+// ---------------------------------------------------------------------------
+
+describe("CLI status", () => {
+  it("status --json falls back to tracker output when no live snapshot is available", async () => {
+    const binDir = await setupMockBd(tempDir, [
+      { id: "bd-1", title: "Open issue", status: "open", priority: 1 },
+      { id: "bd-2", title: "Closed issue", status: "closed", priority: 2 },
+    ]);
+
+    const { stdout, stderr, exitCode } = await runCli(
+      ["status", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.candidates).toBe(1);
+    expect(parsed.terminal).toBe(1);
+    expect(parsed.issues).toHaveLength(1);
+    expect(parsed.issues[0]).toMatchObject({
+      id: "bd-1",
+      title: "Open issue",
+      state: "open",
+      priority: 1,
+    });
+  });
+
+  it("status text mode prints tracker fallback output", async () => {
+    const binDir = await setupMockBd(tempDir, [
+      { id: "bd-3", title: "Needs work", status: "in_progress", priority: 0 },
+      { id: "bd-4", title: "Already done", status: "closed", priority: 3 },
+    ]);
+
+    const { stdout, exitCode } = await runCli(
+      ["status", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("bd-3");
+    expect(stdout).toContain("[in_progress]");
+    expect(stdout).not.toContain("bd-4");
+  });
+
+  it("status --json uses live orchestrator snapshot when API is reachable", async () => {
+    const snapshot = {
+      generated_at: new Date().toISOString(),
+      counts: {
+        running: 1,
+        retrying: 0,
+        completed: 2,
+        claimed: 3,
+      },
+      running: [
+        {
+          issue_id: "1",
+          issue_identifier: "bd-500",
+          title: "Live issue",
+          state: "in_progress",
+          session_id: "sess-1",
+          attempt: 1,
+          started_at: new Date().toISOString(),
+          elapsed_ms: 1500,
+          last_event: "token_update",
+          last_message: "Working...",
+          tokens: {
+            input: 100,
+            output: 50,
+            cache_read: 0,
+            cache_write: 0,
+            total: 150,
+            cost: 0.12,
+          },
+        },
+      ],
+      retrying: [],
+      totals: {
+        input_tokens: 1000,
+        output_tokens: 300,
+        cache_read_tokens: 20,
+        cache_write_tokens: 10,
+        total_tokens: 1330,
+        total_cost: 1.23,
+        seconds_running: 45,
+      },
+    };
+
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(req) {
+        const url = new URL(req.url);
+        if (url.pathname === "/api/v1/state") {
+          return Response.json(snapshot);
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+
+    try {
+      const lockPath = join(tempDir, ".symphony.lock");
+      const lockData = {
+        pid: process.pid,
+        project_path: tempDir,
+        workspace_root: join(tempDir, "workspaces"),
+        workflow_file: join(tempDir, "WORKFLOW.md"),
+        started_at: new Date().toISOString(),
+        hostname: "127.0.0.1",
+        port: server.port,
+      };
+      await writeFile(lockPath, JSON.stringify(lockData, null, 2));
+
+      const { stdout, exitCode } = await runCli(
+        ["status", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+        { cwd: tempDir },
+      );
+
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(stdout.trim());
+      expect(parsed.counts.running).toBe(1);
+      expect(parsed.totals.total_tokens).toBe(1330);
+      expect(parsed.running).toHaveLength(1);
+      expect(parsed.issues).toBeUndefined();
+    } finally {
+      server.stop(true);
+    }
   });
 });
 
