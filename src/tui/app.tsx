@@ -506,6 +506,7 @@ function KanbanApp({
   const [cursor, setCursor] = useState<CursorPos>({ col: 0, row: 0 });
   const [statusMsg, setStatusMsg] = useState("loading…");
   const [overlayActive, setOverlayActive] = useState(false);
+  const overlayRef = useRef(false);
   const [dataSource, setDataSource] = useState<DataSource>("static");
   const [liveStats, setLiveStats] = useState<{
     running: number;
@@ -660,10 +661,10 @@ function KanbanApp({
   const handleShowDetail = useCallback(async () => {
     const issue = getSelectedIssue();
     if (!issue) return;
-    setOverlayActive(true);
+    overlayRef.current = true; setOverlayActive(true);
     const overlay = new IssueDetailOverlay(renderer);
     overlay.onClose(() => {
-      setOverlayActive(false);
+      overlayRef.current = false; setOverlayActive(false);
     });
     // Pass the discovered API base so the overlay can fetch agent session data
     const apiBase = client.getApiBase() ?? undefined;
@@ -671,10 +672,10 @@ function KanbanApp({
   }, [getSelectedIssue, renderer, client]);
 
   const handleNewIssue = useCallback(() => {
-    setOverlayActive(true);
+    overlayRef.current = true; setOverlayActive(true);
     const dialog = new NewIssueDialog(renderer);
     dialog.onClose(() => {
-      setOverlayActive(false);
+      overlayRef.current = false; setOverlayActive(false);
     });
     dialog.onCreated(() => {
       refresh();
@@ -686,7 +687,7 @@ function KanbanApp({
 
   useKeyboard((key) => {
     // Don't handle keys when an overlay is active
-    if (overlayActive) return;
+    if (overlayRef.current) return;
 
     switch (key.name) {
       case "q":
