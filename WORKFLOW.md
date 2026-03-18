@@ -15,7 +15,7 @@ polling:
   interval_ms: 30000
 hooks:
   after_create: |
-    git clone --single-branch --branch master git@github.com:ahkohd/symphony-beads.git . 2>/dev/null || true
+    git clone --single-branch --branch master https://github.com/ahkohd/symphony-beads.git . || true
     rm -rf .beads 2>/dev/null; ln -sf "$SYMPHONY_PROJECT_PATH/.beads" .beads
     echo "node_modules" >> .gitignore
     bun install 2>/dev/null || true
