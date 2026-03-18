@@ -1,0 +1,5 @@
+{"ts":"2026-03-18T02:54:19.947Z","level":"info","msg":"service started","poll_ms":60000,"max_concurrent":5,"runner":"pi -p --no-session"}
+{"ts":"2026-03-18T02:54:30.728Z","level":"info","msg":"tick","candidates":1,"running":0}
+{"ts":"2026-03-18T02:54:30.728Z","level":"info","msg":"dispatching","issue_id":"symphony-beads-7aa","title":"Write a hello world script","attempt":0}
+{"ts":"2026-03-18T02:54:30.728Z","level":"info","msg":"dispatched","count":1}
+{"ts":"2026-03-18T02:54:30.729Z","level":"debug","msg":"spawning agent","issueId":"symphony-beads-7aa","command":"pi -p --no-session","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-7aa"}
