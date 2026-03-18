@@ -3,7 +3,7 @@ tracker:
   kind: beads
   project_path: "."
 workspace:
-  root: ./workspaces
+  root: /tmp/symphony-workspaces
 agent:
   max_concurrent: 5
   max_turns: 20

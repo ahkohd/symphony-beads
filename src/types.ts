@@ -79,6 +79,7 @@ export interface HooksConfig {
 
 export interface AgentConfig {
   max_concurrent: number;
+  max_concurrent_by_state: Record<string, number> | null;
   max_turns: number;
   max_retry_backoff_ms: number;
 }

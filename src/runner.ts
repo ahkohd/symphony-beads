@@ -283,6 +283,67 @@ interface Subprocess {
 }
 
 // ---------------------------------------------------------------------------
+// JSON stdout parsing — extract token usage from pi --mode json events
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert `--mode json` into a pi command array. Placed after the first
+ * element (the binary name) so that sub-commands and other flags are preserved.
+ */
+export function injectJsonMode(command: string[]): string[] {
+  return [command[0]!, "--mode", "json", ...command.slice(1)];
+}
+
+/**
+ * Parse one JSON line from pi's --mode json output. Extracts token usage
+ * from `message_end` events (assistant role) and text content from `turn_end`.
+ *
+ * Token usage on each assistant `message_end` represents that turn's API call
+ * usage. We accumulate input/output across all turns.
+ */
+export function parseJsonLine(
+  line: string,
+  tokens: TokenCount,
+  textParts: string[],
+  onEvent: EventCallback,
+): void {
+  try {
+    const event = JSON.parse(line);
+    if (!event || typeof event !== "object" || !event.type) return;
+
+    // Extract token usage from message_end events (assistant messages)
+    if (event.type === "message_end" && event.message?.role === "assistant") {
+      const usage = event.message.usage;
+      if (usage && typeof usage === "object") {
+        const input = typeof usage.input === "number" ? usage.input : 0;
+        const output = typeof usage.output === "number" ? usage.output : 0;
+        tokens.input += input;
+        tokens.output += output;
+        tokens.total = tokens.input + tokens.output;
+        onEvent({
+          kind: "token_update",
+          tokens: { input: tokens.input, output: tokens.output, total: tokens.total },
+        });
+      }
+    }
+
+    // Extract text content from turn_end for RESULT.md
+    if (event.type === "turn_end" && event.message?.role === "assistant") {
+      const content = event.message.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
+            textParts.push(block.text);
+          }
+        }
+      }
+    }
+  } catch {
+    // Not valid JSON — ignore (could be plain-text output from non-pi runners)
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Model resolution — exported for testing
 // ---------------------------------------------------------------------------
 

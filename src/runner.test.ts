@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { resolveModel } from "./runner.ts";
+import { resolveModel, injectJsonMode, parseJsonLine } from "./runner.ts";
 import { parseWorkflow } from "./config.ts";
-import type { Issue } from "./types.ts";
+import type { Issue, AgentEvent, TokenCount } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
