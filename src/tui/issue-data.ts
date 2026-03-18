@@ -108,4 +108,3 @@ export async function fetchIssueComments(issueId: string): Promise<IssueComment[
     return [];
   }
 }
-

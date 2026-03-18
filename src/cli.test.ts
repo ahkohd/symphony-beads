@@ -308,7 +308,6 @@ describe("CLI status", () => {
     expect(stdout).toContain("[in_progress]");
     expect(stdout).not.toContain("bd-4");
   });
-
 });
 
 // ---------------------------------------------------------------------------

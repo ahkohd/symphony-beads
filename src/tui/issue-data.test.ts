@@ -294,4 +294,3 @@ describe("fetchIssueComments", () => {
     expect(result).toEqual([]);
   });
 });
-

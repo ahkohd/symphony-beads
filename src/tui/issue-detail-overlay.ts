@@ -20,7 +20,12 @@ import {
   Text,
 } from "@opentui/core";
 
-import { fetchIssueComments, fetchIssueDetail, type IssueComment, type IssueDetail } from "./issue-data.ts";
+import {
+  fetchIssueComments,
+  fetchIssueDetail,
+  type IssueComment,
+  type IssueDetail,
+} from "./issue-data.ts";
 
 // -- Colors ------------------------------------------------------------------
 
