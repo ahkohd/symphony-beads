@@ -137,7 +137,7 @@ export async function fetchAgentSession(
     if (!running) return null;
 
     const tokens = running.tokens as
-      | { input: number; output: number; total: number }
+      | { input: number; output: number; cache_read: number; cache_write: number; total: number; cost: number }
       | undefined;
     return {
       session_id: (running.session_id as string | null) ?? null,
@@ -145,7 +145,7 @@ export async function fetchAgentSession(
       last_event: (running.last_event as string | null) ?? null,
       last_message: (running.last_message as string) ?? "",
       attempt: (running.attempt as number) ?? 0,
-      tokens: tokens ?? { input: 0, output: 0, total: 0 },
+      tokens: tokens ?? { input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0, cost: 0 },
     };
   } catch {
     return null;

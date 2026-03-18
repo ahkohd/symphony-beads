@@ -31,7 +31,7 @@ interface Issue {
   // Live orchestrator data (when connected)
   liveStatus?: "running" | "retrying" | null;
   elapsed_ms?: number;
-  tokens?: { input: number; output: number; total: number };
+  tokens?: { input: number; output: number; cache_read: number; cache_write: number; total: number; cost: number };
   attempt?: number;
   lastEvent?: string | null;
   retryDueAt?: string;
@@ -653,7 +653,7 @@ function KanbanApp({
     switch (key.name) {
       case "q":
       case "escape":
-        process.exit(0);
+        renderer.destroy(); process.exit(0);
         break;
 
       case "r":
@@ -784,11 +784,18 @@ function KanbanApp({
 
 // -- Entry point -------------------------------------------------------------
 
-export async function launchTui(): Promise<void> {
+export async function launchKanban(): Promise<void> {
   const renderer = await createCliRenderer({
-    exitOnCtrlC: true,
+    exitOnCtrlC: false,
     useAlternateScreen: true,
   });
+
+  const cleanup = () => {
+    renderer.destroy();
+    process.exit(0);
+  };
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
 
   createRoot(renderer).render(<KanbanApp renderer={renderer} />);
 }

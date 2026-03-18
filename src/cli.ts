@@ -885,7 +885,7 @@ Commands:
   doctor     Verify dependencies, config, and runtime state
   logs       Tail the symphony log file
   stop       Stop a running symphony instance
-  tui        Launch the interactive terminal UI (kanban board)
+  kanban     Interactive kanban board
   dashboard  Launch the live agent status dashboard
 
 Flags:
@@ -1085,7 +1085,7 @@ async function main(): Promise<void> {
     case "stop":
       await cmdStop(args);
       break;
-    case "tui":
+    case "kanban":
       await cmdTui();
       break;
     case "dashboard":

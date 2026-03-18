@@ -192,6 +192,9 @@ function Header({
         {totalTokens > 0 ? (
           <span fg={COLORS.textDim}> · {formatTokens(totalTokens)} tok</span>
         ) : null}
+        {(snap?.totals?.total_cost ?? 0) > 0 ? (
+          <span fg={COLORS.textDim}> · ${snap!.totals.total_cost.toFixed(4)}</span>
+        ) : null}
       </text>
       <text>
         <span fg={COLORS.green}>● {counts.running} running</span>
@@ -273,7 +276,7 @@ function RunningSection({
                 {pad(formatElapsed(r.elapsed_ms), 10)}
               </span>
               {r.tokens.total > 0 ? (
-                <span fg={COLORS.accent}>{pad(formatTokens(r.tokens.input) + "/" + formatTokens(r.tokens.output), 14)}</span>
+                <span fg={COLORS.accent}>{pad(formatTokens(r.tokens.total) + " tok", 14)}</span>
               ) : (
                 <span fg={COLORS.textDim}>{pad("—", 14)}</span>
               )}

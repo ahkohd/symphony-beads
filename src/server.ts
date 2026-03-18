@@ -175,7 +175,7 @@ function renderDashboard(snap: OrchestratorSnapshot): string {
         <td><span class="badge event">${esc(r.last_event ?? "—")}</span></td>
         <td class="msg">${esc(truncate(r.last_message, 120))}</td>
         <td class="num">${fmtNum(r.tokens.total)}</td>
-        <td class="num">$${((r.tokens as any).cost ?? 0).toFixed(4)}</td>
+        <td class="num">$${(r.tokens.cost ?? 0).toFixed(4)}</td>
       </tr>`,
     )
     .join("\n");
