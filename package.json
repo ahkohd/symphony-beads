@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "bun run src/cli.ts start",
+    "test": "bun test",
     "typecheck": "bun x tsc --noEmit"
   },
   "dependencies": {
