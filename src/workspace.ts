@@ -41,7 +41,6 @@ export class WorkspaceManager {
       await mkdir(path, { recursive: true });
       const marker = Bun.file(join(path, ".symphony-init"));
       if (!(await marker.exists())) {
-        await Bun.write(marker, new Date().toISOString());
         created = true;
       }
     } catch (err) {
@@ -49,12 +48,16 @@ export class WorkspaceManager {
       throw err;
     }
 
-    if (created && this.hooks.after_create) {
-      const ok = await this.runHook("after_create", path, this.hooks.after_create, hookEnv);
-      if (!ok) {
-        await rm(path, { recursive: true, force: true }).catch(() => {});
-        throw new Error(`after_create hook failed for ${identifier}`);
+    if (created) {
+      if (this.hooks.after_create) {
+        const ok = await this.runHook("after_create", path, this.hooks.after_create, hookEnv);
+        if (!ok) {
+          await rm(path, { recursive: true, force: true }).catch(() => {});
+          throw new Error(`after_create hook failed for ${identifier}`);
+        }
       }
+      // Write marker after hook so git clone finds an empty directory
+      await Bun.write(join(path, ".symphony-init"), new Date().toISOString());
     }
 
     return { path, key, created };
