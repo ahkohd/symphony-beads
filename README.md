@@ -42,25 +42,32 @@ symphony logs -f               # watch the logs
 symphony <command> [flags]
 
 Commands:
-  start       Start the orchestrator daemon
-  stop        Stop a running instance
-  status      Show current issue status
-  logs        Tail the log file (-f to follow)
-  doctor      Verify all dependencies and config
-  validate    Validate WORKFLOW.md
-  init        Create a new WORKFLOW.md
-  instances   List all running instances
-  tui         Terminal dashboard and kanban board
+  start      Start the orchestrator (daemonizes by default)
+  status     Show current issue status from beads
+  validate   Validate WORKFLOW.md configuration
+  init       Create a new WORKFLOW.md
+  instances  List all running symphony instances
+  doctor     Verify dependencies, config, and runtime state
+  logs       Tail the symphony log file
+  stop       Stop a running symphony instance
+  kanban     Interactive kanban board
 
 Flags:
-  --json            JSON output (all commands)
+  --json            Output as JSON
   --workflow PATH   Workflow file (default: WORKFLOW.md)
-  --foreground      Run in foreground (start only)
-  --follow, -f      Follow mode (logs only)
-  --lines, -n       Number of lines (logs only)
-  --all             Stop all instances (stop only)
+  --verbose         Verbose output
   -h, --help        Show help
   -v, --version     Show version
+
+Start flags:
+  -f, --foreground  Run in foreground (don't daemonize)
+
+Logs flags:
+  -f, --follow      Follow the log file (like tail -f)
+  -n, --lines N     Number of lines to show (default: 50)
+
+Stop flags:
+  --all             Stop all registered symphony instances
 ```
 
 ## How it works
@@ -139,7 +146,7 @@ When the deferral period expires, the issue automatically becomes eligible for d
 
 ### TUI kanban board
 
-The terminal dashboard (`symphony tui`) shows a **Backlog** column for deferred issues. Keyboard shortcuts:
+The terminal dashboard (`symphony kanban`) shows a **Backlog** column for deferred issues. Keyboard shortcuts:
 
 | Key | Action |
 |-----|--------|
@@ -236,19 +243,24 @@ Edit `WORKFLOW.md` while the orchestrator is running — changes are detected an
 src/
   cli.ts            CLI entry point and subcommands
   config.ts         WORKFLOW.md parser and validation
-  orchestrator.ts   Poll / dispatch / reconcile / retry loop
-  tracker.ts        Beads (bd) CLI integration
-  workspace.ts      Per-issue workspace management
-  runner.ts         Pi agent spawning + stdout capture
-  pr-monitor.ts     GitHub PR watcher (merge/changes requested)
-  template.ts       Mustache-compatible prompt renderer
-  server.ts         HTTP dashboard (GET /api/v1/state)
   doctor.ts         Dependency and config health checks
-  watcher.ts        WORKFLOW.md file change detection
-  lock.ts           PID lock files + instance registry
   exec.ts           Subprocess helper
+  lock.ts           PID lock files + instance registry
   log.ts            Structured logging (text/JSON/file)
+  orchestrator.ts   Poll / dispatch / reconcile / retry loop
+  pr-monitor.ts     GitHub PR watcher (merge/changes requested)
+  runner.ts         Pi agent spawning + stdout capture
+  template.ts       Mustache-compatible prompt renderer
+  tracker.ts        Beads (bd) CLI integration
   types.ts          TypeScript types
+  watcher.ts        WORKFLOW.md file change detection
+  workspace.ts      Per-issue workspace management
+  tui/
+    app.tsx                Kanban TUI entry point
+    index.ts               TUI module exports
+    issue-data.ts          Beads data access for TUI
+    issue-detail-overlay.ts Issue detail panel
+    new-issue-dialog.ts    New issue dialog
 ```
 
 ## License
