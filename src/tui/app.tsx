@@ -535,7 +535,7 @@ function KanbanApp({
       setLiveStats({
         running: snapshot.counts.running,
         retrying: snapshot.counts.retrying,
-        tokens: snapshot.totals.input_tokens + snapshot.totals.output_tokens,
+        tokens: snapshot.totals.total_tokens,
       });
     } else {
       setIssues(allIssues);

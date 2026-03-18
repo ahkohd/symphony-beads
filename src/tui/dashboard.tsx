@@ -170,9 +170,7 @@ function Header({
   const sourceColor =
     source === "live" ? COLORS.green : source === "static" ? COLORS.yellow : COLORS.red;
 
-  const totalTokens = snap?.totals
-    ? snap.totals.input_tokens + snap.totals.output_tokens
-    : 0;
+  const totalTokens = snap?.totals?.total_tokens ?? 0;
 
   return (
     <box
