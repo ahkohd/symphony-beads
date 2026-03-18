@@ -171,7 +171,6 @@ function Header({ issueCount, status }: { issueCount: number; status: string }) 
   );
 }
 
-
 function _fmtElapsed(ms: number): string {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
@@ -189,8 +188,6 @@ function PriorityBadge({ priority }: { priority: number | null }) {
   };
   return <span fg={badge.color}>{badge.label}</span>;
 }
-
-
 
 function IssueCard({
   issue,
@@ -379,134 +376,135 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     setCursor((prev) => clampCursor(prev, buckets));
   }, [issues]);
 
-// -- Helpers ---------------------------------------------------------------
+  // -- Helpers ---------------------------------------------------------------
 
-const getSelectedIssue = useCallback((): Issue | null => {
-  const colKey = COLUMNS[cursor.col]?.key;
-  if (!colKey) return null;
-  const items = buckets.get(colKey) ?? [];
-  return items[cursor.row] ?? null;
-}, [cursor, buckets]);
+  const getSelectedIssue = useCallback((): Issue | null => {
+    const colKey = COLUMNS[cursor.col]?.key;
+    if (!colKey) return null;
+    const items = buckets.get(colKey) ?? [];
+    return items[cursor.row] ?? null;
+  }, [cursor, buckets]);
 
-// -- Actions ---------------------------------------------------------------
+  // -- Actions ---------------------------------------------------------------
 
-const handleMoveForward = useCallback(async () => {
-  const issue = getSelectedIssue();
-  if (!issue) return;
-  const currentIdx = STATUS_ORDER.indexOf(issue.status);
-  if (currentIdx < 0 || currentIdx >= STATUS_ORDER.length - 1) {
-    setStatusMsg("already at last status");
-    return;
-  }
-  const nextStatus = STATUS_ORDER[currentIdx + 1]!;
-  setStatusMsg(`moving ${issue.id} → ${nextStatus}…`);
-  const ok = await moveIssueStatus(issue.id, nextStatus);
-  if (ok) {
-    setStatusMsg(`moved ${issue.id} → ${nextStatus}`);
-    await refresh();
-  } else {
-    setStatusMsg(`failed to move ${issue.id}`);
-  }
-}, [getSelectedIssue, refresh]);
+  const handleMoveForward = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    const currentIdx = STATUS_ORDER.indexOf(issue.status);
+    if (currentIdx < 0 || currentIdx >= STATUS_ORDER.length - 1) {
+      setStatusMsg("already at last status");
+      return;
+    }
+    const nextStatus = STATUS_ORDER[currentIdx + 1]!;
+    setStatusMsg(`moving ${issue.id} → ${nextStatus}…`);
+    const ok = await moveIssueStatus(issue.id, nextStatus);
+    if (ok) {
+      setStatusMsg(`moved ${issue.id} → ${nextStatus}`);
+      await refresh();
+    } else {
+      setStatusMsg(`failed to move ${issue.id}`);
+    }
+  }, [getSelectedIssue, refresh]);
 
-const handleMoveBackward = useCallback(async () => {
-  const issue = getSelectedIssue();
-  if (!issue) return;
-  const currentIdx = STATUS_ORDER.indexOf(issue.status);
-  if (currentIdx <= 0) {
-    setStatusMsg("already at first status");
-    return;
-  }
-  const prevStatus = STATUS_ORDER[currentIdx - 1]!;
-  setStatusMsg(`moving ${issue.id} → ${prevStatus}…`);
-  const ok = await moveIssueStatus(issue.id, prevStatus);
-  if (ok) {
-    setStatusMsg(`moved ${issue.id} → ${prevStatus}`);
-    await refresh();
-  } else {
-    setStatusMsg(`failed to move ${issue.id}`);
-  }
-}, [getSelectedIssue, refresh]);
+  const handleMoveBackward = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    const currentIdx = STATUS_ORDER.indexOf(issue.status);
+    if (currentIdx <= 0) {
+      setStatusMsg("already at first status");
+      return;
+    }
+    const prevStatus = STATUS_ORDER[currentIdx - 1]!;
+    setStatusMsg(`moving ${issue.id} → ${prevStatus}…`);
+    const ok = await moveIssueStatus(issue.id, prevStatus);
+    if (ok) {
+      setStatusMsg(`moved ${issue.id} → ${prevStatus}`);
+      await refresh();
+    } else {
+      setStatusMsg(`failed to move ${issue.id}`);
+    }
+  }, [getSelectedIssue, refresh]);
 
-const handleClose = useCallback(async () => {
-  const issue = getSelectedIssue();
-  if (!issue) return;
-  setStatusMsg(`closing ${issue.id}…`);
-  const ok = await closeIssue(issue.id);
-  if (ok) {
-    setStatusMsg(`closed ${issue.id}`);
-    await refresh();
-  } else {
-    setStatusMsg(`failed to close ${issue.id}`);
-  }
-}, [getSelectedIssue, refresh]);
+  const handleClose = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    setStatusMsg(`closing ${issue.id}…`);
+    const ok = await closeIssue(issue.id);
+    if (ok) {
+      setStatusMsg(`closed ${issue.id}`);
+      await refresh();
+    } else {
+      setStatusMsg(`failed to close ${issue.id}`);
+    }
+  }, [getSelectedIssue, refresh]);
 
-const handleSendToBacklog = useCallback(async () => {
-  const issue = getSelectedIssue();
-  if (!issue) return;
-  if (issue.status === "deferred") {
-    setStatusMsg(`${issue.id} is already deferred`);
-    return;
-  }
-  setStatusMsg(`deferring ${issue.id}…`);
-  const ok = await moveIssueStatus(issue.id, "deferred");
-  if (ok) {
-    setStatusMsg(`deferred ${issue.id}`);
-    await refresh();
-  } else {
-    setStatusMsg(`failed to defer ${issue.id}`);
-  }
-}, [getSelectedIssue, refresh]);
+  const handleSendToBacklog = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    if (issue.status === "deferred") {
+      setStatusMsg(`${issue.id} is already deferred`);
+      return;
+    }
+    setStatusMsg(`deferring ${issue.id}…`);
+    const ok = await moveIssueStatus(issue.id, "deferred");
+    if (ok) {
+      setStatusMsg(`deferred ${issue.id}`);
+      await refresh();
+    } else {
+      setStatusMsg(`failed to defer ${issue.id}`);
+    }
+  }, [getSelectedIssue, refresh]);
 
-const handlePromoteFromBacklog = useCallback(async () => {
-  const issue = getSelectedIssue();
-  if (!issue) return;
-  if (issue.status !== "deferred") {
-    setStatusMsg(`${issue.id} is not deferred`);
-    return;
-  }
-  setStatusMsg(`promoting ${issue.id} → open…`);
-  const ok = await moveIssueStatus(issue.id, "open");
-  if (ok) {
-    setStatusMsg(`promoted ${issue.id} → open`);
-    await refresh();
-  } else {
-    setStatusMsg(`failed to promote ${issue.id}`);
-  }
-}, [getSelectedIssue, refresh]);
+  const handlePromoteFromBacklog = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    if (issue.status !== "deferred") {
+      setStatusMsg(`${issue.id} is not deferred`);
+      return;
+    }
+    setStatusMsg(`promoting ${issue.id} → open…`);
+    const ok = await moveIssueStatus(issue.id, "open");
+    if (ok) {
+      setStatusMsg(`promoted ${issue.id} → open`);
+      await refresh();
+    } else {
+      setStatusMsg(`failed to promote ${issue.id}`);
+    }
+  }, [getSelectedIssue, refresh]);
 
-const handleShowDetail = useCallback(async () => {
-  const issue = getSelectedIssue();
-  if (!issue) return;
-  overlayRef.current = true;
-  const overlay = new IssueDetailOverlay(renderer);
-  overlay.onClose(() => {
-    overlayRef.current = false;
-  });
-  await overlay.show(issue.id);
-}, [getSelectedIssue, renderer]);
+  const handleShowDetail = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+    overlayRef.current = true;
+    const overlay = new IssueDetailOverlay(renderer);
+    overlay.onClose(() => {
+      overlayRef.current = false;
+    });
+    await overlay.show(issue.id);
+  }, [getSelectedIssue, renderer]);
 
-const handleNewIssue = useCallback(() => {
-  overlayRef.current = true;
-  const dialog = new NewIssueDialog(renderer);
-  dialog.onClose(() => {
-    overlayRef.current = false;
-  });
-  dialog.onCreated(() => {
-    refresh();
-  });
-  dialog.show();
-}, [renderer, refresh]);
+  const handleNewIssue = useCallback(() => {
+    overlayRef.current = true;
+    const dialog = new NewIssueDialog(renderer);
+    dialog.onClose(() => {
+      overlayRef.current = false;
+    });
+    dialog.onCreated(() => {
+      refresh();
+    });
+    dialog.show();
+  }, [renderer, refresh]);
 
-// -- Keyboard --------------------------------------------------------------
+  // -- Keyboard --------------------------------------------------------------
 
-useKeyboard((key) => {
+  useKeyboard((key) => {
     // Don't handle keys when an overlay is active
     if (overlayRef.current) return;
 
     switch (key.name) {
       case "q":
-        renderer.destroy(); process.exit(0);
+        renderer.destroy();
+        process.exit(0);
         break;
 
       case "r":
@@ -519,10 +517,7 @@ useKeyboard((key) => {
           const newCol = Math.max(0, prev.col - 1);
           const colKey = COLUMNS[newCol]!.key;
           const items = buckets.get(colKey) ?? [];
-          const row =
-            items.length > 0
-              ? Math.min(prev.row, items.length - 1)
-              : 0;
+          const row = items.length > 0 ? Math.min(prev.row, items.length - 1) : 0;
           return { col: newCol, row };
         });
         break;
@@ -532,10 +527,7 @@ useKeyboard((key) => {
           const newCol = Math.min(COLUMNS.length - 1, prev.col + 1);
           const colKey = COLUMNS[newCol]!.key;
           const items = buckets.get(colKey) ?? [];
-          const row =
-            items.length > 0
-              ? Math.min(prev.row, items.length - 1)
-              : 0;
+          const row = items.length > 0 ? Math.min(prev.row, items.length - 1) : 0;
           return { col: newCol, row };
         });
         break;
@@ -595,11 +587,11 @@ useKeyboard((key) => {
         handleClose();
         break;
     }
-})
+  });
 
-// -- Render ----------------------------------------------------------------
+  // -- Render ----------------------------------------------------------------
 
-return (
+  return (
     <box
       style={{
         flexDirection: "column",
@@ -607,10 +599,7 @@ return (
         backgroundColor: COLORS.bg,
       }}
     >
-      <Header
-        issueCount={issues.length}
-        status={statusMsg}
-      />
+      <Header issueCount={issues.length} status={statusMsg} />
 
       {/* Kanban columns */}
       <box
