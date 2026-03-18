@@ -91,19 +91,60 @@ bd create issue → symphony dispatches → pi implements → git push
   ┌────────┐  dispatch  ┌─────────────┐  PR created  ┌────────┐
   │  open  │ ─────────► │ in_progress │ ───────────► │ review │
   └────────┘            └─────────────┘              └────────┘
-                              │                         │
-                              │                   PR merged
-                              ▼                         │
-                        ┌──────────┐                    │
-                        │  closed  │ ◄──────────────────┘
-                        └──────────┘
+     │  ▲                     │                         │
+     │  │                     │                   PR merged
+     ▼  │                     ▼                         │
+ ┌──────────┐           ┌──────────┐                    │
+ │ deferred │           │  closed  │ ◄──────────────────┘
+ │ (backlog)│           └──────────┘
+ └──────────┘
 ```
 
 | State | Orchestrator behavior |
 |-------|-----------------------|
 | `open`, `in_progress` | Agent dispatched / kept running |
 | `review`, `blocked` | Agent stopped, workspace preserved |
+| `deferred` | Not dispatched — parked in backlog |
 | `closed`, `cancelled` | Agent stopped, workspace removed |
+
+## Backlog workflow
+
+Issues can be deferred to a backlog so the orchestrator skips them until you're ready.
+
+### Creating backlog items
+
+```bash
+bd create "Nice-to-have refactor" -s deferred -p 3   # starts in backlog
+```
+
+### Moving issues to/from backlog
+
+```bash
+bd update bd-42 -s deferred   # send an open issue to backlog
+bd update bd-42 -s open       # promote from backlog back to active
+```
+
+Deferred issues are **not dispatched** by the orchestrator — they stay parked until explicitly promoted.
+
+### Time-based deferral
+
+You can defer an issue for a specific duration using `--defer`:
+
+```bash
+bd update bd-42 --defer '+1w'   # defer for 1 week
+bd update bd-42 --defer '+3d'   # defer for 3 days
+```
+
+When the deferral period expires, the issue automatically becomes eligible for dispatch again.
+
+### TUI kanban board
+
+The terminal dashboard (`symphony tui`) shows a **Backlog** column for deferred issues. Keyboard shortcuts:
+
+| Key | Action |
+|-----|--------|
+| `b` | Send the selected issue to backlog (set `deferred`) |
+| `B` | Promote the selected issue from backlog (set `open`) |
 
 ## Configuration
 
