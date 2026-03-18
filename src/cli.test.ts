@@ -6,7 +6,8 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import { resolve, dirname, join } from "path";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "fs/promises";
 import { tmpdir } from "os";
-import { findProjectRoot, parseArgs } from "./cli.ts";
+import { findProjectRoot, parseArgs, resolveConfigPaths } from "./cli.ts";
+import type { ServiceConfig } from "./types.ts";
 
 const CLI_PATH = resolve(import.meta.dir, "cli.ts");
 
@@ -449,5 +450,106 @@ describe("findProjectRoot", () => {
 
     const { exitCode } = await runCli(["validate"], { cwd: subdir });
     expect(exitCode).toBe(0);
+  });
+
+  it("--workflow flag resolves relative to found root from subdirectory", async () => {
+    await mkdir(join(rootDir, ".git"));
+    // Write the workflow with a custom name
+    await writeFile(join(rootDir, "custom.md"), MINIMAL_WORKFLOW);
+    await mkdir(join(rootDir, "workspaces"), { recursive: true });
+    const subdir = join(rootDir, "src");
+    await mkdir(subdir, { recursive: true });
+
+    const { exitCode } = await runCli(["validate", "--workflow", "custom.md"], { cwd: subdir });
+    expect(exitCode).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveConfigPaths tests
+// ---------------------------------------------------------------------------
+
+describe("resolveConfigPaths", () => {
+  function makeConfig(overrides?: Partial<{ workspace_root: string; project_path: string; log_file: string | null }>): ServiceConfig {
+    return {
+      tracker: {
+        kind: "beads",
+        project_path: overrides?.project_path ?? ".",
+        active_states: ["open", "in_progress"],
+        terminal_states: ["closed"],
+      },
+      polling: { interval_ms: 30000 },
+      workspace: { root: overrides?.workspace_root ?? "./workspaces" },
+      hooks: { after_create: null, before_run: null, after_run: null, before_remove: null, timeout_ms: 60000 },
+      agent: { max_concurrent: 1, max_turns: 10, max_retry_backoff_ms: 300000 },
+      runner: { command: "echo noop", model: null, models: null, turn_timeout_ms: 3600000, stall_timeout_ms: 300000 },
+      log: { file: overrides && "log_file" in overrides ? overrides.log_file! : "./symphony.log" },
+    };
+  }
+
+  it("resolves relative workspace.root to project root", () => {
+    const config = makeConfig({ workspace_root: "./workspaces" });
+    resolveConfigPaths(config, "/project");
+    expect(config.workspace.root).toBe("/project/workspaces");
+  });
+
+  it("resolves relative tracker.project_path to project root", () => {
+    const config = makeConfig({ project_path: "." });
+    resolveConfigPaths(config, "/project");
+    expect(config.tracker.project_path).toBe("/project");
+  });
+
+  it("resolves relative log.file to project root", () => {
+    const config = makeConfig({ log_file: "./symphony.log" });
+    resolveConfigPaths(config, "/project");
+    expect(config.log.file).toBe("/project/symphony.log");
+  });
+
+  it("leaves absolute paths unchanged", () => {
+    const config = makeConfig({
+      workspace_root: "/absolute/workspaces",
+      project_path: "/absolute/project",
+      log_file: "/absolute/log.txt",
+    });
+    resolveConfigPaths(config, "/other");
+    expect(config.workspace.root).toBe("/absolute/workspaces");
+    expect(config.tracker.project_path).toBe("/absolute/project");
+    expect(config.log.file).toBe("/absolute/log.txt");
+  });
+
+  it("leaves tilde paths unchanged", () => {
+    const config = makeConfig({ workspace_root: "~/workspaces" });
+    resolveConfigPaths(config, "/project");
+    expect(config.workspace.root).toBe("~/workspaces");
+  });
+
+  it("handles null log.file", () => {
+    const config = makeConfig({ log_file: null });
+    resolveConfigPaths(config, "/project");
+    expect(config.log.file).toBeNull();
+  });
+
+  it("validate --json from subdirectory shows absolute config paths", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "symphony-resolve-test-"));
+    try {
+      await mkdir(join(rootDir, ".git"));
+      await writeFile(join(rootDir, "WORKFLOW.md"), MINIMAL_WORKFLOW);
+      await mkdir(join(rootDir, "workspaces"), { recursive: true });
+      const subdir = join(rootDir, "src", "deep");
+      await mkdir(subdir, { recursive: true });
+
+      const { stdout, exitCode } = await runCli(
+        ["validate", "--json"],
+        { cwd: subdir },
+      );
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(stdout.trim());
+      // workspace.root should be resolved relative to rootDir, not subdir
+      expect(parsed.config.workspace.root).toBe(join(rootDir, "workspaces"));
+      // tracker.project_path should be resolved to rootDir
+      expect(parsed.config.tracker.project_path).toBe(rootDir);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
   });
 });
