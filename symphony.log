@@ -12,3 +12,25 @@
 {"ts":"2026-03-18T03:18:12.219Z","level":"debug","msg":"running hook","hook":"after_create","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-p00"}
 {"ts":"2026-03-18T03:18:12.307Z","level":"debug","msg":"running hook","hook":"before_run","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-p00"}
 {"ts":"2026-03-18T03:18:13.054Z","level":"debug","msg":"spawning agent","issueId":"symphony-beads-p00","command":"pi -p --no-session","cwd":"/home/var/symphony-beads/workspaces/symphony-beads-p00"}
+{"ts":"2026-03-18T03:18:42.256Z","level":"info","msg":"tick","candidates":0,"running":1}
+{"ts":"2026-03-18T03:18:52.107Z","level":"info","msg":"agent completed","issue_id":"symphony-beads-p00","elapsed_s":39.889}
+{"ts":"2026-03-18T03:18:52.107Z","level":"debug","msg":"retry scheduled","issue_id":"symphony-beads-p00","attempt":1,"delay_ms":1000,"error":null}
+{"ts":"2026-03-18T03:18:53.129Z","level":"debug","msg":"retry: issue gone, releasing claim","issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T03:19:12.276Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:19:42.295Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:20:12.316Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:20:42.337Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:21:12.357Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:21:42.377Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:22:12.398Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:22:42.418Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:23:12.439Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:23:29.513Z","level":"info","msg":"removing stale lock file","pid":1157359,"lock":"/home/var/symphony-beads/.symphony.lock"}
+{"ts":"2026-03-18T03:23:29.515Z","level":"info","msg":"watching workflow file for changes","path":"/home/var/symphony-beads/WORKFLOW.md","mode":"fs.watch"}
+{"ts":"2026-03-18T03:23:29.515Z","level":"info","msg":"pr monitor started","interval_ms":30000}
+{"ts":"2026-03-18T03:23:29.517Z","level":"info","msg":"service started","poll_ms":30000,"max_concurrent":5,"runner":"pi -p --no-session"}
+{"ts":"2026-03-18T03:23:29.556Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:23:59.576Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:23:59.969Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}
+{"ts":"2026-03-18T03:24:29.593Z","level":"info","msg":"tick","candidates":0,"running":0}
+{"ts":"2026-03-18T03:24:29.954Z","level":"info","msg":"pr merged, closing issue","pr":2,"issue_id":"symphony-beads-p00"}

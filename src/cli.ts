@@ -24,6 +24,7 @@ import { WorkspaceManager } from "./workspace.ts";
 import { Orchestrator } from "./orchestrator.ts";
 import { WorkflowWatcher } from "./watcher.ts";
 import { log, setJsonMode, isJsonMode, setLogFile } from "./log.ts";
+import { PrMonitor } from "./pr-monitor.ts";
 import {
   acquireLock,
   releaseLock,
@@ -195,8 +196,13 @@ async function cmdStart(args: Args): Promise<void> {
   const watcher = new WorkflowWatcher(workflowAbsPath, orchestrator);
   await watcher.start();
 
+  // Monitor GitHub PRs — auto-close on merge, reopen on changes requested
+  const prMonitor = new PrMonitor(config);
+  prMonitor.start();
+
   // Graceful shutdown with cleanup
   const shutdown = async () => {
+    prMonitor.stop();
     watcher.stop();
     orchestrator.stop();
     await releaseLock(projectDir);
