@@ -353,7 +353,7 @@ export class NewIssueDialog {
         // Footer
         Text({ content: "\u2500".repeat(50), fg: COLORS.border }),
         Text({
-          content: " Tab next field  Shift+Tab prev  Enter submit  Esc cancel",
+          content: " Tab next field  Shift+Tab prev  Enter/Ctrl+S submit  Esc cancel",
           fg: COLORS.textDim,
         }),
       ),
@@ -424,14 +424,14 @@ export class NewIssueDialog {
     }
     // Listen for selection changes on priority
     if (this.prioritySelect) {
-      this.prioritySelect.on("selectionChanged", (_index: number) => {
-        this.priorityIndex = (this.prioritySelect as any)?.getSelectedIndex?.() ?? this.priorityIndex;
+      this.prioritySelect.on("selectionChanged", (index: number) => {
+        this.priorityIndex = index;
       });
     }
     // Listen for selection changes on type
     if (this.typeSelect) {
-      this.typeSelect.on("selectionChanged", (_index: number) => {
-        this.typeIndex = (this.typeSelect as any)?.getSelectedIndex?.() ?? this.typeIndex;
+      this.typeSelect.on("selectionChanged", (index: number) => {
+        this.typeIndex = index;
       });
     }
   }
@@ -569,6 +569,14 @@ export class NewIssueDialog {
         return;
       }
 
+      // Ctrl+S submits the form from any field
+      if (key.name === "s" && key.ctrl) {
+        key.preventDefault();
+        key.stopPropagation();
+        this.submit();
+        return;
+      }
+
       // Tab cycles focus forward
       if (key.name === "tab" && !key.shift) {
         key.preventDefault();
@@ -585,21 +593,17 @@ export class NewIssueDialog {
         return;
       }
 
-      // Enter submits (but only when not in a text input — let inputs handle Enter)
-      // For text inputs, Enter on the "submit" key binding triggers submit too
+      // Enter submits from text inputs; on selects, let the component handle it
       if (key.name === "return" || key.name === "enter") {
-        // If we're on a select field or the focused input fires enter, submit
-        if (this.focusedField === "priority" || this.focusedField === "type") {
+        if (this.focusedField === "title" || this.focusedField === "description") {
           key.preventDefault();
           key.stopPropagation();
           this.submit();
           return;
         }
-        // For title/description inputs, Enter submits the form
-        key.preventDefault();
-        key.stopPropagation();
-        this.submit();
-        return;
+        // On priority/type selects: don't intercept — let Select handle Enter
+        // to confirm option selection. User can submit via Ctrl+S or Tab to
+        // a text field and press Enter.
       }
     };
     this.renderer.keyInput.on("keypress", this.keyHandler);
