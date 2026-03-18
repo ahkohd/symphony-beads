@@ -23,6 +23,7 @@ import { createRoot, useKeyboard } from "@opentui/react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { OrchestratorSnapshot } from "../orchestrator.ts";
 import { OrchestratorClient } from "./live-client.ts";
+import { exec } from "../exec.ts";
 
 // -- Types -------------------------------------------------------------------
 
@@ -41,6 +42,13 @@ interface ReviewItem {
   id: string;
   identifier: string;
   title: string;
+}
+
+interface StaticCounts {
+  open: number;
+  in_progress: number;
+  review: number;
+  closed: number;
 }
 
 // -- Color constants ---------------------------------------------------------
@@ -62,7 +70,7 @@ const COLORS = {
 
 // -- Helpers -----------------------------------------------------------------
 
-function formatElapsed(ms: number): string {
+export function formatElapsed(ms: number): string {
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
@@ -71,14 +79,20 @@ function formatElapsed(ms: number): string {
   return `${h}h ${m % 60}m`;
 }
 
-function formatCountdown(dueAt: string): string {
+export function formatCountdown(dueAt: string): string {
   const ms = new Date(dueAt).getTime() - Date.now();
   if (ms <= 0) return "now";
   return formatElapsed(ms);
 }
 
-function truncStr(s: string, max: number): string {
+export function truncStr(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
+  return String(n);
 }
 
 function pad(s: string, len: number): string {
@@ -93,14 +107,12 @@ function timeStr(): string {
 
 async function fetchReviewIssues(): Promise<ReviewItem[]> {
   try {
-    const proc = Bun.spawn(["bd", "list", "--json", "--status", "review"], {
-      stdout: "pipe",
-      stderr: "pipe",
+    const result = await exec(["bd", "list", "--json", "--status", "review"], {
+      cwd: process.cwd(),
+      timeout: 5000,
     });
-    const text = await new Response(proc.stdout).text();
-    await proc.exited;
-    if (!text.trim()) return [];
-    const parsed = JSON.parse(text);
+    if (result.code !== 0 || !result.stdout.trim()) return [];
+    const parsed = JSON.parse(result.stdout);
     if (!Array.isArray(parsed)) return [];
     return parsed.map((issue: Record<string, unknown>) => ({
       id: String(issue["id"] ?? issue["identifier"] ?? ""),
@@ -109,6 +121,31 @@ async function fetchReviewIssues(): Promise<ReviewItem[]> {
     }));
   } catch {
     return [];
+  }
+}
+
+/** Fetch static issue counts from bd for static (no orchestrator) mode. */
+async function fetchStaticCounts(): Promise<StaticCounts> {
+  const empty: StaticCounts = { open: 0, in_progress: 0, review: 0, closed: 0 };
+  try {
+    const result = await exec(["bd", "list", "--all", "--json"], {
+      cwd: process.cwd(),
+      timeout: 5000,
+    });
+    if (result.code !== 0 || !result.stdout.trim()) return empty;
+    const parsed = JSON.parse(result.stdout);
+    if (!Array.isArray(parsed)) return empty;
+    const counts: StaticCounts = { ...empty };
+    for (const issue of parsed) {
+      const status = String(issue.status ?? "open");
+      if (status === "open") counts.open++;
+      else if (status === "in_progress") counts.in_progress++;
+      else if (status === "review") counts.review++;
+      else if (status === "closed") counts.closed++;
+    }
+    return counts;
+  } catch {
+    return empty;
   }
 }
 
@@ -133,6 +170,10 @@ function Header({
   const sourceColor =
     source === "live" ? COLORS.green : source === "static" ? COLORS.yellow : COLORS.red;
 
+  const totalTokens = snap?.totals
+    ? snap.totals.input_tokens + snap.totals.output_tokens
+    : 0;
+
   return (
     <box
       style={{
@@ -148,6 +189,9 @@ function Header({
         <strong fg={COLORS.accent}>Symphony</strong>
         <span fg={COLORS.textDim}> Dashboard </span>
         <span fg={sourceColor}>{sourceLabel}</span>
+        {totalTokens > 0 ? (
+          <span fg={COLORS.textDim}> · {formatTokens(totalTokens)} tok</span>
+        ) : null}
       </text>
       <text>
         <span fg={COLORS.green}>● {counts.running} running</span>
@@ -349,6 +393,46 @@ function Footer() {
   );
 }
 
+// -- Static mode summary (no orchestrator) -----------------------------------
+
+function StaticSummary({
+  reviews,
+  counts,
+}: {
+  reviews: ReviewItem[];
+  counts: StaticCounts;
+}) {
+  const total = counts.open + counts.in_progress + counts.review + counts.closed;
+  return (
+    <box style={{ flexDirection: "column", flexGrow: 1 }}>
+      <box style={{ paddingLeft: 1, height: 2, flexDirection: "column" }}>
+        <text fg={COLORS.yellow}>
+          ◌ No live orchestrator — showing static issue data
+        </text>
+        <text fg={COLORS.textDim}>
+          Start symphony with: symphony start --port 4500
+        </text>
+      </box>
+
+      <SectionTitle title="Issue Summary" color={COLORS.accent} count={total} />
+      <box style={{ paddingLeft: 2, height: 1 }}>
+        <text>
+          <span fg={COLORS.green}>● {counts.open} open</span>
+          <span fg={COLORS.textDim}> │ </span>
+          <span fg={COLORS.blue}>▶ {counts.in_progress} in progress</span>
+          <span fg={COLORS.textDim}> │ </span>
+          <span fg={COLORS.yellow}>◈ {counts.review} in review</span>
+          <span fg={COLORS.textDim}> │ </span>
+          <span fg={COLORS.gray}>✓ {counts.closed} closed</span>
+        </text>
+      </box>
+
+      <SectionTitle title="Review" color={COLORS.blue} count={reviews.length} />
+      <ReviewSection reviews={reviews} />
+    </box>
+  );
+}
+
 // -- Main App ----------------------------------------------------------------
 
 function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
@@ -356,6 +440,12 @@ function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
   const [events, setEvents] = useState<EventLogEntry[]>([]);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [source, setSource] = useState<"live" | "static" | "offline">("offline");
+  const [staticCounts, setStaticCounts] = useState<StaticCounts>({
+    open: 0,
+    in_progress: 0,
+    review: 0,
+    closed: 0,
+  });
 
   // Track which issue events we've already logged to avoid duplicates
   const seenEventsRef = useRef(new Map<string, string>());
@@ -408,9 +498,11 @@ function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
         setEvents((prev) => [...newEvents, ...prev].slice(0, 200));
       }
     } else {
-      // Static fallback — no orchestrator running, show what we can
+      // Static fallback — no orchestrator running, show what we can from bd
       setSource("static");
       setSnap(null);
+      const counts = await fetchStaticCounts();
+      setStaticCounts(counts);
     }
   }, [client]);
 
@@ -432,7 +524,7 @@ function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
     }
   });
 
-  // Offline / no orchestrator state
+  // Static mode — no orchestrator running, show issue summary + reviews from bd
   if (source === "static" && !snap) {
     return (
       <box
@@ -443,25 +535,7 @@ function DashboardApp({ client, refreshMs = 2000 }: DashboardProps) {
         }}
       >
         <Header snap={null} source="static" />
-        <box
-          style={{
-            flexGrow: 1,
-            justifyContent: "center",
-            alignItems: "center",
-            flexDirection: "column",
-            gap: 1,
-          }}
-        >
-          <text fg={COLORS.yellow}>
-            ◌ No live orchestrator found
-          </text>
-          <text fg={COLORS.textDim}>
-            Start symphony with: symphony start --port 4500
-          </text>
-          <text fg={COLORS.textDim}>
-            The dashboard will auto-connect when available
-          </text>
-        </box>
+        <StaticSummary reviews={reviews} counts={staticCounts} />
         <Footer />
       </box>
     );
