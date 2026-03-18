@@ -819,8 +819,8 @@ async function cmdLogs(args: Args): Promise<void> {
 }
 
 async function cmdTui(): Promise<void> {
-  const { launchTui } = await import("./tui/app.tsx");
-  await launchTui();
+  const { launchKanban } = await import("./tui/app.tsx");
+  await launchKanban();
 }
 
 async function cmdDashboard(args: Args): Promise<void> {
