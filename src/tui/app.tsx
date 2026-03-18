@@ -6,7 +6,8 @@
 // mouse click selects columns/cards, / searches/filter cards,
 // m/M moves status, b sends to backlog (deferred),
 // B promotes from backlog to open, s sorts current column,
-// n opens issue-creation guidance, d closes/deletes.
+// n opens issue-creation guidance, d closes/deletes,
+// o opens PR for review/closed issues when available.
 //
 // ---------------------------------------------------------------------------
 
@@ -14,6 +15,7 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { exec } from "../exec.ts";
+import { fetchIssueDetail } from "./issue-data.ts";
 import { IssueDetailOverlay } from "./issue-detail-overlay.ts";
 import { NewIssueDialog } from "./new-issue-dialog.ts";
 
@@ -124,6 +126,26 @@ async function closeIssue(issueId: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function canOpenPr(status: string): boolean {
+  return status === "review" || status === "closed";
+}
+
+async function openExternalUrl(url: string): Promise<boolean> {
+  const command =
+    process.platform === "darwin"
+      ? ["open", url]
+      : process.platform === "win32"
+        ? ["cmd", "/c", "start", "", url]
+        : ["xdg-open", url];
+
+  const result = await exec(command, {
+    cwd: process.cwd(),
+    timeout: 5000,
+  });
+
+  return result.code === 0;
 }
 
 // -- Helpers -----------------------------------------------------------------
@@ -462,6 +484,8 @@ function Footer() {
         <span fg={COLORS.text}> sort col </span>
         <span fg={COLORS.textDim}>d</span>
         <span fg={COLORS.text}> close </span>
+        <span fg={COLORS.textDim}>o</span>
+        <span fg={COLORS.text}> open PR (review/closed) </span>
         <span fg={COLORS.textDim}>r</span>
         <span fg={COLORS.text}> refresh </span>
         <span fg={COLORS.textDim}>q</span>
@@ -654,6 +678,34 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     });
     await overlay.show(issue.id);
   }, [getSelectedIssue, renderer]);
+
+  const handleOpenPr = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+
+    if (!canOpenPr(issue.status)) {
+      setStatusMsg("PR open is available in review/closed");
+      return;
+    }
+
+    setStatusMsg(`loading PR for ${issue.id}…`);
+    const detail = await fetchIssueDetail(issue.id);
+    const prUrl = detail?.pr_url;
+
+    if (!prUrl) {
+      setStatusMsg(`no PR found for ${issue.id}`);
+      return;
+    }
+
+    setStatusMsg(`opening PR for ${issue.id}…`);
+    const opened = await openExternalUrl(prUrl);
+
+    if (opened) {
+      setStatusMsg(`opened PR for ${issue.id}`);
+    } else {
+      setStatusMsg(`failed to open PR for ${issue.id}`);
+    }
+  }, [getSelectedIssue]);
 
   const handleShowCreateGuidance = useCallback(() => {
     overlayRef.current = true;
@@ -878,6 +930,10 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
 
       case "B":
         handlePromoteFromBacklog();
+        break;
+
+      case "o":
+        handleOpenPr();
         break;
 
       case "n":
