@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "symphony_beads",
+  "project_id": "eb4ca04b-52e4-4444-9254-9faefb42a07b"
+}
