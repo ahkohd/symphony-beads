@@ -213,10 +213,11 @@ async function daemonize(args: Args, config: ReturnType<typeof parseWorkflow>["c
     stdout: logFd,
     stderr: logFd,
     stdin: "ignore",
+    detached: true,
     env: { ...process.env, SYMPHONY_DAEMON: "1" },
   });
 
-  // Detach from parent — allow child to outlive us
+  // Detach from parent — child runs in its own session (setsid)
   child.unref();
 
   // Brief wait to verify the child started successfully
