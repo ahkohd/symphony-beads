@@ -239,7 +239,7 @@ export class IssueDetailOverlay {
 
     // -- Footer --
     children.push(Text({ content: "\u2500".repeat(60), fg: COLORS.border }));
-    children.push(Text({ content: " Esc close  \u2191\u2193 scroll", fg: COLORS.textDim }));
+    children.push(Text({ content: " Esc close  \u2191\u2193/jk scroll", fg: COLORS.textDim }));
 
     // Filter out nulls
     const validChildren = children.filter((c): c is NonNullable<VChild> => c != null);
@@ -374,6 +374,20 @@ export class IssueDetailOverlay {
 
   // -- Key handling ----------------------------------------------------------
 
+  private scrollDetail(delta: number): void {
+    const scrollbox = this.overlayRoot?.getRenderable?.("issue-detail-scrollbox") as
+      | {
+          scrollBy?: (
+            delta: number | { x: number; y: number },
+            unit?: "absolute" | "viewport" | "content" | "step",
+          ) => void;
+        }
+      | null
+      | undefined;
+
+    scrollbox?.scrollBy?.(delta, "step");
+  }
+
   private installKeyHandler(): void {
     if (this.keyHandler) {
       this.renderer.keyInput.off("keypress", this.keyHandler);
@@ -384,6 +398,20 @@ export class IssueDetailOverlay {
         key.preventDefault();
         key.stopPropagation();
         this.close();
+        return;
+      }
+
+      if (key.name === "j") {
+        key.preventDefault();
+        key.stopPropagation();
+        this.scrollDetail(1);
+        return;
+      }
+
+      if (key.name === "k") {
+        key.preventDefault();
+        key.stopPropagation();
+        this.scrollDetail(-1);
       }
     };
 
