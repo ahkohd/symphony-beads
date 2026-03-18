@@ -11,6 +11,7 @@
 //   doctor    Verify dependencies, config, and runtime state
 //   logs      Tail the symphony log file
 //   stop      Stop a running symphony instance
+//   tui       Launch terminal kanban board
 //
 // Global flags:
 //   --json          JSON output
@@ -30,6 +31,7 @@ import { log, setJsonMode, isJsonMode, setLogFile } from "./log.ts";
 import { PrMonitor } from "./pr-monitor.ts";
 import { runDoctor } from "./doctor.ts";
 import { HttpDashboard } from "./server.ts";
+import { startTui } from "./tui/app.ts";
 import {
   acquireLock,
   releaseLock,
@@ -674,6 +676,7 @@ Commands:
   doctor     Verify dependencies, config, and runtime state
   logs       Tail the symphony log file
   stop       Stop a running symphony instance
+  tui        Launch terminal kanban board
 
 Flags:
   --json           Output as JSON
@@ -805,6 +808,9 @@ async function main(): Promise<void> {
       break;
     case "stop":
       await cmdStop(args);
+      break;
+    case "tui":
+      await startTui();
       break;
     case "":
       error("no command specified");
