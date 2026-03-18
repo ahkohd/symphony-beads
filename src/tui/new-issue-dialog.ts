@@ -387,7 +387,7 @@ export class NewIssueDialog {
   private deepFind(node: Renderable, id: string): Renderable | null {
     if (node.id === id) return node;
     // Check children
-    const children = (node as any).children as Renderable[] | undefined;
+    const children = (node as Record<string, unknown>).children as Renderable[] | undefined;
     if (children && Array.isArray(children)) {
       for (const child of children) {
         const found = this.deepFind(child, id);
@@ -404,19 +404,19 @@ export class NewIssueDialog {
     // Listen for input changes on the title field
     if (this.titleInput) {
       this.titleInput.on("input", () => {
-        this.titleValue = (this.titleInput as any)?.value ?? "";
+        this.titleValue = (this.titleInput as Record<string, unknown>)?.value ?? "";
       });
       this.titleInput.on("change", () => {
-        this.titleValue = (this.titleInput as any)?.value ?? "";
+        this.titleValue = (this.titleInput as Record<string, unknown>)?.value ?? "";
       });
     }
     // Listen for input changes on the description field
     if (this.descriptionInput) {
       this.descriptionInput.on("input", () => {
-        this.descriptionValue = (this.descriptionInput as any)?.value ?? "";
+        this.descriptionValue = (this.descriptionInput as Record<string, unknown>)?.value ?? "";
       });
       this.descriptionInput.on("change", () => {
-        this.descriptionValue = (this.descriptionInput as any)?.value ?? "";
+        this.descriptionValue = (this.descriptionInput as Record<string, unknown>)?.value ?? "";
       });
     }
     // Listen for selection changes on priority
@@ -465,16 +465,20 @@ export class NewIssueDialog {
 
   private captureValues(): void {
     if (this.titleInput) {
-      this.titleValue = (this.titleInput as any)?.value ?? this.titleValue;
+      this.titleValue = (this.titleInput as Record<string, unknown>)?.value ?? this.titleValue;
     }
     if (this.descriptionInput) {
-      this.descriptionValue = (this.descriptionInput as any)?.value ?? this.descriptionValue;
+      this.descriptionValue =
+        (this.descriptionInput as Record<string, unknown>)?.value ?? this.descriptionValue;
     }
     if (this.prioritySelect) {
-      this.priorityIndex = (this.prioritySelect as any)?.getSelectedIndex?.() ?? this.priorityIndex;
+      this.priorityIndex =
+        (this.prioritySelect as Record<string, unknown>)?.getSelectedIndex?.() ??
+        this.priorityIndex;
     }
     if (this.typeSelect) {
-      this.typeIndex = (this.typeSelect as any)?.getSelectedIndex?.() ?? this.typeIndex;
+      this.typeIndex =
+        (this.typeSelect as Record<string, unknown>)?.getSelectedIndex?.() ?? this.typeIndex;
     }
   }
 

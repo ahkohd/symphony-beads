@@ -142,7 +142,7 @@ export class WorkflowWatcher {
       return; // Keep last known good config
     }
 
-    let workflow;
+    let workflow: ReturnType<typeof parseWorkflow> | undefined;
     try {
       workflow = parseWorkflow(content);
     } catch (err) {

@@ -833,10 +833,6 @@ async function cmdTui(): Promise<void> {
   await launchKanban();
 }
 
-async function cmdDashboard(args: Args): Promise<void> {
-  const _projectDir = resolve(dirname(args.workflow));
-}
-
 // -- Helpers -----------------------------------------------------------------
 
 async function loadWorkflow(path: string) {
@@ -1093,12 +1089,12 @@ async function main(): Promise<void> {
     case "kanban":
       await cmdTui();
       break;
-      await cmdDashboard(args);
-      break;
     case "":
       error("no command specified");
+      break;
     default:
       error(`unknown command: ${args.command}`);
+      break;
   }
 }
 

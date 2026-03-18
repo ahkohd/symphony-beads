@@ -361,7 +361,7 @@ describe("CLI init", () => {
   it("init creates a WORKFLOW.md", async () => {
     const initDir = await mkdtemp(join(tmpdir(), "symphony-init-test-"));
     try {
-      const { exitCode } = await runCli(["init", "--workflow", join(initDir, "WORKFLOW.md")], {
+      await runCli(["init", "--workflow", join(initDir, "WORKFLOW.md")], {
         cwd: initDir,
       });
       // May fail because bd isn't configured, but should still create the file

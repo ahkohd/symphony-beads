@@ -374,7 +374,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
   // Clamp cursor when issues change
   useEffect(() => {
     setCursor((prev) => clampCursor(prev, buckets));
-  }, [issues]);
+  }, [buckets]);
 
   // -- Helpers ---------------------------------------------------------------
 
