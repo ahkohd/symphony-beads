@@ -3,9 +3,10 @@
 //
 // Five-column kanban layout (Open, In Progress, Review, Closed, Deferred).
 // Arrow keys or vim keys (h/j/k/l) navigate cards, Enter for details,
-// m/M to move status, b to send to backlog (deferred),
-// B to promote from backlog to open, s to sort current column,
-// n for issue-creation guidance, d to close/delete.
+// / to search/filter cards, m/M to move status,
+// b to send to backlog (deferred), B to promote from backlog to open,
+// s to sort current column, n for issue-creation guidance,
+// d to close/delete.
 //
 // ---------------------------------------------------------------------------
 
@@ -158,6 +159,19 @@ function compareByPriority(a: Issue, b: Issue): number {
   if (recencyDiff !== 0) return recencyDiff;
 
   return a.id.localeCompare(b.id);
+}
+
+function filterIssues(issues: Issue[], query: string): Issue[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return issues;
+
+  return issues.filter((issue) => {
+    const haystack = [issue.id, issue.title, issue.status, issue.issue_type, issue.owner ?? ""]
+      .join(" ")
+      .toLowerCase();
+
+    return haystack.includes(normalized);
+  });
 }
 
 function bucketIssues(
@@ -379,6 +393,8 @@ function Footer() {
         <span fg={COLORS.text}> move </span>
         <span fg={COLORS.textDim}>b/B</span>
         <span fg={COLORS.text}> defer/promote </span>
+        <span fg={COLORS.textDim}>/</span>
+        <span fg={COLORS.text}> search </span>
         <span fg={COLORS.textDim}>n</span>
         <span fg={COLORS.text}> create via agent </span>
         <span fg={COLORS.textDim}>s</span>
@@ -401,9 +417,12 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
   const [cursor, setCursor] = useState<CursorPos>({ col: 0, row: 0 });
   const [statusMsg, setStatusMsg] = useState("loading…");
   const [columnSortModes, setColumnSortModes] = useState<Record<string, ColumnSortMode>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMode, setSearchMode] = useState(false);
   const overlayRef = useRef(false);
 
-  const buckets = bucketIssues(issues, columnSortModes);
+  const filteredIssues = filterIssues(issues, searchQuery);
+  const buckets = bucketIssues(filteredIssues, columnSortModes);
 
   // -- Data refresh ----------------------------------------------------------
 
@@ -546,6 +565,29 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     // Don't handle keys when an overlay is active
     if (overlayRef.current) return;
 
+    if (searchMode) {
+      switch (key.name) {
+        case "escape":
+        case "return":
+        case "enter":
+          setSearchMode(false);
+          break;
+
+        case "backspace":
+          setSearchQuery((prev) => prev.slice(0, -1));
+          break;
+
+        default: {
+          if (key.ctrl || key.meta || key.option) break;
+          if (key.sequence.length === 1) {
+            setSearchQuery((prev) => `${prev}${key.sequence}`);
+          }
+          break;
+        }
+      }
+      return;
+    }
+
     switch (key.name) {
       case "q":
         renderer.destroy();
@@ -555,6 +597,19 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
       case "r":
         setStatusMsg("refreshing…");
         refresh();
+        break;
+
+      case "/":
+        setSearchMode(true);
+        setSearchQuery("");
+        setStatusMsg("");
+        break;
+
+      case "escape":
+        if (searchQuery.trim()) {
+          setSearchQuery("");
+          setStatusMsg("search cleared");
+        }
         break;
 
       case "s": {
@@ -657,6 +712,13 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     }
   });
 
+  const headerStatus = searchMode
+    ? `search: /${searchQuery}`
+    : statusMsg ||
+      (searchQuery.trim()
+        ? `filter: /${searchQuery} (${filteredIssues.length}/${issues.length})`
+        : "");
+
   // -- Render ----------------------------------------------------------------
 
   return (
@@ -667,7 +729,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
         backgroundColor: COLORS.bg,
       }}
     >
-      <Header issueCount={issues.length} status={statusMsg} />
+      <Header issueCount={filteredIssues.length} status={headerStatus} />
 
       {/* Kanban columns */}
       <box
