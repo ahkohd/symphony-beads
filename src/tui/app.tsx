@@ -130,6 +130,18 @@ async function closeIssue(issueId: string): Promise<boolean> {
 
 type ColumnSortMode = "default" | "priority";
 
+type ScrollBoxRenderableAPI = {
+  scrollBy?: (
+    delta: number | { x: number; y: number },
+    unit?: "absolute" | "viewport" | "content" | "step",
+  ) => void;
+  scrollTo?: (position: number | { x: number; y: number }) => void;
+  scrollChildIntoView?: (childId: string) => void;
+  viewport?: {
+    height: number;
+  };
+};
+
 function makeColumnScrollboxId(columnKey: string): string {
   return `kanban-col-scroll-${columnKey}`;
 }
@@ -430,6 +442,10 @@ function Footer() {
         <span fg={COLORS.text}> col </span>
         <span fg={COLORS.textDim}>↑↓ / j k</span>
         <span fg={COLORS.text}> card </span>
+        <span fg={COLORS.textDim}>g / G</span>
+        <span fg={COLORS.text}> jump </span>
+        <span fg={COLORS.textDim}>Ctrl-u/d</span>
+        <span fg={COLORS.text}> half page </span>
         <span fg={COLORS.textDim}>click</span>
         <span fg={COLORS.text}> select </span>
         <span fg={COLORS.textDim}>Enter</span>
@@ -648,6 +664,57 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     dialog.show();
   }, [renderer]);
 
+  const getActiveColumnScrollbox = useCallback((): ScrollBoxRenderableAPI | null => {
+    const col = COLUMNS[cursor.col];
+    if (!col) return null;
+    return (
+      (renderer.root.getRenderable(makeColumnScrollboxId(col.key)) as
+        | ScrollBoxRenderableAPI
+        | null
+        | undefined) ?? null
+    );
+  }, [cursor.col, renderer]);
+
+  const moveActiveColumnRows = useCallback(
+    (rowDelta: number): void => {
+      setCursor((prev) => {
+        const colKey = COLUMNS[prev.col]?.key;
+        if (!colKey) return prev;
+
+        const items = buckets.get(colKey) ?? [];
+        if (items.length === 0) {
+          return { ...prev, row: 0 };
+        }
+
+        const scrollbox = getActiveColumnScrollbox();
+        const viewportHeight = scrollbox?.viewport?.height ?? items.length;
+        const halfPage = Math.max(1, Math.floor(viewportHeight / 2));
+        const nextRow = Math.max(0, Math.min(prev.row + rowDelta * halfPage, items.length - 1));
+
+        return { ...prev, row: nextRow };
+      });
+    },
+    [buckets, getActiveColumnScrollbox],
+  );
+
+  const moveActiveColumnToRow = useCallback(
+    (row: number): void => {
+      setCursor((prev) => {
+        const colKey = COLUMNS[prev.col]?.key;
+        if (!colKey) return prev;
+
+        const items = buckets.get(colKey) ?? [];
+        if (items.length === 0) {
+          return { ...prev, row: 0 };
+        }
+
+        const clamped = Math.max(0, Math.min(row, items.length - 1));
+        return { ...prev, row: clamped };
+      });
+    },
+    [buckets],
+  );
+
   // -- Keyboard --------------------------------------------------------------
 
   useKeyboard((key) => {
@@ -762,6 +829,28 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
         });
         break;
 
+      case "g":
+        if (key.shift) {
+          moveActiveColumnToRow(Number.POSITIVE_INFINITY);
+        } else {
+          moveActiveColumnToRow(0);
+        }
+        break;
+
+      case "u":
+        if (key.ctrl) {
+          moveActiveColumnRows(-1);
+        }
+        break;
+
+      case "d":
+        if (key.ctrl) {
+          moveActiveColumnRows(1);
+        } else {
+          handleClose();
+        }
+        break;
+
       case "return":
       case "enter":
         handleShowDetail();
@@ -793,10 +882,6 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
 
       case "n":
         handleShowCreateGuidance();
-        break;
-
-      case "d":
-        handleClose();
         break;
     }
   });

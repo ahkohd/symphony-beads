@@ -239,7 +239,7 @@ export class IssueDetailOverlay {
     children.push(this.buildDivider());
     children.push(
       Text({
-        content: " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page",
+        content: " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom",
         fg: COLORS.textDim,
       }),
     );
@@ -406,6 +406,8 @@ export class IssueDetailOverlay {
       delta: number | { x: number; y: number },
       unit?: "absolute" | "viewport" | "content" | "step",
     ) => void;
+    scrollTo?: (position: number | { x: number; y: number }) => void;
+    scrollHeight?: number;
     viewport?: { height: number };
   } | null {
     return (
@@ -415,6 +417,8 @@ export class IssueDetailOverlay {
               delta: number | { x: number; y: number },
               unit?: "absolute" | "viewport" | "content" | "step",
             ) => void;
+            scrollTo?: (position: number | { x: number; y: number }) => void;
+            scrollHeight?: number;
             viewport?: { height: number };
           }
         | null
@@ -434,6 +438,21 @@ export class IssueDetailOverlay {
     const viewportHeight = scrollbox.viewport?.height ?? 0;
     const delta = Math.max(1, Math.floor(viewportHeight / 2));
     scrollbox.scrollBy(direction * delta, "step");
+  }
+
+  private scrollToTop(): void {
+    const scrollbox = this.getDetailScrollbox();
+    scrollbox?.scrollTo?.(0);
+  }
+
+  private scrollToBottom(): void {
+    const scrollbox = this.getDetailScrollbox();
+    if (!scrollbox?.scrollTo || !scrollbox.viewport) return;
+
+    const viewportHeight = scrollbox.viewport.height;
+    const scrollHeight = scrollbox.scrollHeight ?? 0;
+    const maxScrollTop = Math.max(0, scrollHeight - viewportHeight);
+    scrollbox.scrollTo(maxScrollTop);
   }
 
   private installKeyHandler(): void {
@@ -460,6 +479,17 @@ export class IssueDetailOverlay {
         key.preventDefault();
         key.stopPropagation();
         this.scrollHalfPage(-1);
+        return;
+      }
+
+      if (key.name === "g") {
+        key.preventDefault();
+        key.stopPropagation();
+        if (key.shift) {
+          this.scrollToBottom();
+        } else {
+          this.scrollToTop();
+        }
         return;
       }
 
