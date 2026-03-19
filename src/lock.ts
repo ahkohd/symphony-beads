@@ -75,10 +75,13 @@ function registryDir(): string {
   return resolve(home, REGISTRY_DIR_NAME);
 }
 
-function registryKey(projectPath: string): string {
+export function getInstanceId(projectPath: string): string {
   // Simple hash of the absolute project path
-  const h = Bun.hash(projectPath);
-  return `${h}.json`;
+  return `${Bun.hash(resolve(projectPath))}`;
+}
+
+function registryKey(projectPath: string): string {
+  return `${getInstanceId(projectPath)}.json`;
 }
 
 /**

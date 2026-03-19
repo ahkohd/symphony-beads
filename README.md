@@ -68,7 +68,31 @@ Logs flags:
 
 Stop flags:
   --all             Stop all registered symphony instances
+  --id ID           Stop a specific instance by ID or unique ID prefix
 ```
+
+### Instance IDs (deterministic) and targeted stop
+
+Each running instance gets a deterministic ID derived from the absolute project path.
+
+- `symphony start --json` includes top-level `instance_id`
+- `symphony status --json` includes `service.instance_id`
+- `symphony instances --json` includes `instances[].id`
+
+Example flow:
+
+```bash
+symphony instances
+# ... copy ID (or a unique prefix) ...
+symphony stop --id 1234567890
+```
+
+Prefix matching rules for `stop --id`:
+
+- exact ID match wins
+- otherwise, a unique prefix is accepted
+- if a prefix matches multiple instances, command fails with `instance_id_ambiguous`
+- in text mode, ambiguous errors also print top matching IDs to help you pick a longer prefix
 
 ## How it works
 
@@ -228,7 +252,8 @@ Each project gets its own `WORKFLOW.md`, lock file, and log. No conflicts:
 cd ~/projects/project-a && symphony start
 cd ~/projects/project-b && symphony start
 
-symphony instances   # see all running
+symphony instances                   # see all running + IDs
+symphony stop --id <instance-id>    # stop one specific instance
 ```
 
 Isolation: `.symphony.lock` prevents duplicates, global registry (`~/.symphony/instances/`) detects workspace root collisions.

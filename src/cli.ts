@@ -40,6 +40,7 @@ export function parseArgs(argv: string[]): Args {
     shortF: false,
     lines: 50,
     all: false,
+    instanceId: null,
   };
 
   const positional: string[] = [];
@@ -78,6 +79,14 @@ export function parseArgs(argv: string[]): Args {
       case "--all":
         args.all = true;
         break;
+      case "--id": {
+        const value = argv[++i];
+        if (!value) {
+          exitUsageError("missing value for --id", printUsage);
+        }
+        args.instanceId = value;
+        break;
+      }
       case "-h":
       case "--help":
         help = true;
@@ -157,7 +166,8 @@ Logs flags:
   -n, --lines N    Number of lines to show (default: 50)
 
 Stop flags:
-  --all            Stop all registered symphony instances`);
+  --all            Stop all registered symphony instances
+  --id ID          Stop a specific running instance by ID (see: symphony instances)`);
 }
 
 function printVersion(json: boolean): void {

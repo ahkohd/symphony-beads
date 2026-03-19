@@ -78,6 +78,67 @@ exit 1
   return binDir;
 }
 
+interface MockInstanceRecord {
+  pid: number;
+  project_path: string;
+  workspace_root: string;
+  workflow_file: string;
+  started_at: string;
+}
+
+async function setupMockInstancesRegistry(
+  homeDir: string,
+  instances: MockInstanceRecord[],
+): Promise<void> {
+  const registryDir = join(homeDir, ".symphony", "instances");
+  await mkdir(registryDir, { recursive: true });
+
+  for (const [index, instance] of instances.entries()) {
+    const path = join(registryDir, `instance-${index}.json`);
+    await writeFile(path, JSON.stringify(instance, null, 2));
+  }
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findUniquePrefix(targetId: string, allIds: string[]): string {
+  for (let length = 1; length <= targetId.length; length++) {
+    const prefix = targetId.slice(0, length);
+    const count = allIds.filter((id) => id.startsWith(prefix)).length;
+    if (count === 1) {
+      return prefix;
+    }
+  }
+
+  return targetId;
+}
+
+function findAmbiguousPrefix(ids: string[]): string {
+  for (let length = 1; length <= 12; length++) {
+    const groups = new Map<string, number>();
+
+    for (const id of ids) {
+      const prefix = id.slice(0, Math.min(length, id.length));
+      groups.set(prefix, (groups.get(prefix) ?? 0) + 1);
+    }
+
+    for (const [prefix, count] of groups.entries()) {
+      if (count > 1) {
+        return prefix;
+      }
+    }
+  }
+
+  return ids[0] ?? "";
+}
+
 // -- Test setup: temp directory with a minimal WORKFLOW.md --------------------
 
 let tempDir: string;
@@ -218,6 +279,13 @@ describe("parseArgs -f flag", () => {
     expect(args.follow).toBe(true);
     expect(args.foreground).toBe(false);
   });
+
+  it("--id sets instanceId for stop targeting", () => {
+    const args = parseArgs(["stop", "--id", "abc123"]);
+    expect(args.command).toBe("stop");
+    expect(args.instanceId).toBe("abc123");
+    expect(args.all).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -276,8 +344,20 @@ describe("CLI status", () => {
     expect(stderr).toBe("");
 
     const parsed = JSON.parse(stdout.trim());
+    expect(typeof parsed.generated_at).toBe("string");
+    expect(parsed.workflow_file).toBe(join(tempDir, "WORKFLOW.md"));
+    expect(parsed.project_dir).toBe(tempDir);
+    expect(parsed.service).toMatchObject({
+      instance_id: `${Bun.hash(tempDir)}`,
+      running: false,
+      pid: null,
+      started_at: null,
+      uptime_seconds: null,
+      stale_lock: false,
+    });
     expect(parsed.candidates).toBe(1);
     expect(parsed.terminal).toBe(1);
+    expect(parsed.by_state).toEqual({ open: 1 });
     expect(parsed.issues).toHaveLength(1);
     expect(parsed.issues[0]).toMatchObject({
       id: "bd-1",
@@ -287,9 +367,12 @@ describe("CLI status", () => {
     });
   });
 
-  it("status text mode prints tracker fallback output", async () => {
+  it("status text mode prints readable sections without title truncation", async () => {
+    const longTitle =
+      "Needs work on tiny-terminal readability for status output and long title handling";
+
     const binDir = await setupMockBd(tempDir, [
-      { id: "bd-3", title: "Needs work", status: "in_progress", priority: 0 },
+      { id: "bd-3", title: longTitle, status: "in_progress", priority: 0 },
       { id: "bd-4", title: "Already done", status: "closed", priority: 3 },
     ]);
 
@@ -304,9 +387,253 @@ describe("CLI status", () => {
     );
 
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("bd-3");
-    expect(stdout).toContain("[in_progress]");
+    expect(stdout).toContain("service:");
+    expect(stdout).toContain("status: not running");
+    expect(stdout).toContain(`id: ${Bun.hash(tempDir)}`);
+    expect(stdout).toContain("issues:");
+    expect(stdout).toContain("states:");
+    expect(stdout).toContain("in_progress: 1");
+    expect(stdout).toContain("Active issues (1):");
+    expect(stdout).toContain("Issue 1:");
+    expect(stdout).toContain("ID:       bd-3");
+    expect(stdout).toContain("State:    in_progress");
+    expect(stdout).toContain(`Title:    ${longTitle}`);
     expect(stdout).not.toContain("bd-4");
+  });
+
+  it("status --json reports running service from live lock", async () => {
+    const lockPath = join(tempDir, ".symphony.lock");
+    await writeFile(
+      lockPath,
+      JSON.stringify(
+        {
+          pid: process.pid,
+          project_path: tempDir,
+          workspace_root: join(tempDir, "workspaces"),
+          workflow_file: join(tempDir, "WORKFLOW.md"),
+          started_at: "2026-03-19T00:00:00.000Z",
+        },
+        null,
+        2,
+      ),
+    );
+
+    const binDir = await setupMockBd(tempDir, []);
+    const { stdout, exitCode } = await runCli(
+      ["status", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.service).toMatchObject({
+      instance_id: `${Bun.hash(tempDir)}`,
+      running: true,
+      pid: process.pid,
+      started_at: "2026-03-19T00:00:00.000Z",
+      stale_lock: false,
+    });
+    expect(typeof parsed.service.uptime_seconds).toBe("number");
+    expect(parsed.service.uptime_seconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it("status --json reports stale lock when pid is dead", async () => {
+    const lockPath = join(tempDir, ".symphony.lock");
+    await writeFile(
+      lockPath,
+      JSON.stringify(
+        {
+          pid: 999999,
+          project_path: tempDir,
+          workspace_root: join(tempDir, "workspaces"),
+          workflow_file: join(tempDir, "WORKFLOW.md"),
+          started_at: "2026-03-19T00:00:00.000Z",
+        },
+        null,
+        2,
+      ),
+    );
+
+    const binDir = await setupMockBd(tempDir, []);
+    const { stdout, exitCode } = await runCli(
+      ["status", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.service).toMatchObject({
+      instance_id: `${Bun.hash(tempDir)}`,
+      running: false,
+      pid: 999999,
+      started_at: "2026-03-19T00:00:00.000Z",
+      uptime_seconds: null,
+      stale_lock: true,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Instances subcommand
+// ---------------------------------------------------------------------------
+
+describe("CLI instances", () => {
+  it("instances --json returns structured output with uptime", async () => {
+    const homeDir = join(tempDir, "instances-home");
+    const startedAt = new Date(Date.now() - 95_000).toISOString();
+
+    await setupMockInstancesRegistry(homeDir, [
+      {
+        pid: process.pid,
+        project_path: tempDir,
+        workspace_root: join(tempDir, "workspaces"),
+        workflow_file: join(tempDir, "WORKFLOW.md"),
+        started_at: startedAt,
+      },
+    ]);
+
+    const { stdout, exitCode } = await runCli(
+      ["instances", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(typeof parsed.generated_at).toBe("string");
+    expect(parsed.total).toBe(1);
+    expect(parsed.instances).toHaveLength(1);
+    expect(parsed.instances[0]).toMatchObject({
+      id: `${Bun.hash(tempDir)}`,
+      pid: process.pid,
+      project_path: tempDir,
+      workspace_root: join(tempDir, "workspaces"),
+      workflow_file: join(tempDir, "WORKFLOW.md"),
+      started_at: startedAt,
+    });
+    expect(typeof parsed.instances[0].uptime_seconds).toBe("number");
+    expect(parsed.instances[0].uptime_seconds).toBeGreaterThanOrEqual(0);
+    expect(typeof parsed.instances[0].uptime_human).toBe("string");
+  });
+
+  it("instances text mode prints readable sections without path truncation", async () => {
+    const homeDir = join(tempDir, "instances-home");
+    const longProjectPath = join(tempDir, "very", "deep", "nested", "path", "project");
+    const longWorkspacePath = join(longProjectPath, "workspaces", "feature-branch-workspace");
+    const longWorkflowPath = join(longProjectPath, "configs", "WORKFLOW.production.md");
+
+    await setupMockInstancesRegistry(homeDir, [
+      {
+        pid: process.pid,
+        project_path: longProjectPath,
+        workspace_root: longWorkspacePath,
+        workflow_file: longWorkflowPath,
+        started_at: new Date(Date.now() - 15_000).toISOString(),
+      },
+    ]);
+
+    const { stdout, exitCode } = await runCli(
+      ["instances", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Running symphony instances (1):");
+    expect(stdout).toContain("Instance 1:");
+    expect(stdout).toContain(`ID:        ${Bun.hash(longProjectPath)}`);
+    expect(stdout).toContain(`PID:       ${process.pid}`);
+    expect(stdout).toContain("Uptime:");
+    expect(stdout).toContain(`Project:   ${longProjectPath}`);
+    expect(stdout).toContain(`Workspace: ${longWorkspacePath}`);
+    expect(stdout).toContain(`Workflow:  ${longWorkflowPath}`);
+  });
+
+  it("instances shows empty message when none are running", async () => {
+    const homeDir = join(tempDir, "instances-home-empty");
+    await mkdir(homeDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli(
+      ["instances", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout.trim()).toBe("No running symphony instances.");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Logs subcommand
+// ---------------------------------------------------------------------------
+
+describe("CLI logs", () => {
+  it("logs --json returns structured tail output", async () => {
+    const logPath = join(tempDir, "test-symphony.log");
+    await writeFile(logPath, "line-1\n\nline-3\nline-4\n");
+
+    const { stdout, exitCode } = await runCli(
+      ["logs", "--json", "--lines", "2", "--workflow", join(tempDir, "WORKFLOW.md")],
+      { cwd: tempDir },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.path).toBe(logPath);
+    expect(parsed.total_lines).toBe(4);
+    expect(parsed.shown_lines).toBe(2);
+    expect(parsed.follow).toBe(false);
+    expect(parsed.lines).toEqual(["line-3", "line-4"]);
+  });
+
+  it("logs text mode prints header and tailed content", async () => {
+    const logPath = join(tempDir, "test-symphony.log");
+    await writeFile(logPath, "line-a\nline-b\nline-c\n");
+
+    const { stdout, exitCode } = await runCli(
+      ["logs", "--lines", "2", "--workflow", join(tempDir, "WORKFLOW.md")],
+      { cwd: tempDir },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain(`==> ${logPath} <==`);
+    expect(stdout).toContain("line-b");
+    expect(stdout).toContain("line-c");
+    expect(stdout).not.toContain("line-a");
+  });
+
+  it("logs rejects --json with --follow", async () => {
+    const { stdout, exitCode } = await runCli(
+      ["logs", "--json", "--follow", "--workflow", join(tempDir, "WORKFLOW.md")],
+      { cwd: tempDir },
+    );
+
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.error).toBe("json_follow_not_supported");
   });
 });
 
@@ -321,15 +648,16 @@ describe("CLI start (daemonize)", () => {
       { cwd: tempDir, timeout: 15_000 },
     );
 
-    // Parent should exit quickly (not block)
-    expect(exitCode).toBe(0);
-
     const parsed = JSON.parse(stdout.trim());
-    // Either started successfully or failed due to missing beads/git —
-    // the key is that parent returned (didn't block)
+
     if (parsed.started) {
+      expect(exitCode).toBe(0);
+      expect(parsed.mode).toBe("daemon");
+      expect(parsed.instance_id).toBe(`${Bun.hash(tempDir)}`);
       expect(parsed.pid).toBeGreaterThan(0);
       expect(parsed.log_file).toBeTruthy();
+      expect(parsed.project_dir).toBe(tempDir);
+      expect(parsed.workflow_file).toBe(join(tempDir, "WORKFLOW.md"));
 
       // Clean up daemon
       try {
@@ -337,9 +665,15 @@ describe("CLI start (daemonize)", () => {
       } catch {
         /* ok */
       }
+      return;
     }
-    // If daemon_failed, that's also fine — it means daemonize worked
-    // but the child couldn't start the orchestrator (expected in test env)
+
+    // If startup fails, we should still get a structured error payload.
+    expect(exitCode).toBe(1);
+    expect(typeof parsed.error).toBe("string");
+    expect(parsed.instance_id).toBe(`${Bun.hash(tempDir)}`);
+    expect(parsed.log_file).toBeTruthy();
+    expect(["daemon_failed", "daemon_unhealthy"]).toContain(parsed.error);
   });
 
   it("start returns to shell (parent exits) without --foreground", async () => {
@@ -378,6 +712,7 @@ describe("CLI start (daemonize)", () => {
     expect(exitCode).toBe(1);
     const parsed = JSON.parse(stdout.trim());
     expect(parsed.error).toBe("already_running");
+    expect(parsed.instance_id).toBe(`${Bun.hash(tempDir)}`);
     expect(parsed.pid).toBe(process.pid);
     expect(parsed.message).toContain("already running");
     expect(parsed.message).toContain("symphony stop");
@@ -422,6 +757,14 @@ describe("CLI stop", () => {
     expect(exitCode).toBe(1);
     const parsed = JSON.parse(stdout.trim());
     expect(parsed.error).toBe("not_running");
+    expect(parsed.project_dir).toBe(tempDir);
+    expect(parsed.workflow_file).toBe(join(tempDir, "WORKFLOW.md"));
+    expect(parsed.service).toMatchObject({
+      running: false,
+      pid: null,
+      started_at: null,
+      stale_lock: false,
+    });
   });
 
   it("stop cleans up stale lock file", async () => {
@@ -436,16 +779,296 @@ describe("CLI stop", () => {
     };
     await writeFile(lockPath, JSON.stringify(fakeLock, null, 2));
 
-    const { exitCode } = await runCli(
+    const { stdout, exitCode } = await runCli(
       ["stop", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
       { cwd: tempDir },
     );
 
     expect(exitCode).toBe(0);
 
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.project_dir).toBe(tempDir);
+    expect(parsed.workflow_file).toBe(join(tempDir, "WORKFLOW.md"));
+    expect(parsed.service_before).toMatchObject({
+      running: false,
+      pid: 999999,
+      stale_lock: true,
+    });
+    expect(parsed.service_after).toMatchObject({
+      running: false,
+      pid: null,
+      started_at: null,
+      stale_lock: false,
+    });
+    expect(parsed.already_dead).toBe(true);
+
     // Lock file should be cleaned up
     const lockFile = Bun.file(lockPath);
     expect(await lockFile.exists()).toBe(false);
+  });
+
+  it("stop --all --json reports empty result when nothing is running", async () => {
+    const { stdout, exitCode } = await runCli(
+      ["stop", "--all", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: join(tempDir, "isolated-home"),
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed).toMatchObject({
+      stopped: [],
+      total: 0,
+      stopped_count: 0,
+      stale_count: 0,
+    });
+  });
+
+  it("stop --id --json returns instance_not_found for unknown id", async () => {
+    const { stdout, exitCode } = await runCli(
+      ["stop", "--id", "missing-id", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: join(tempDir, "isolated-home"),
+        },
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.error).toBe("instance_not_found");
+    expect(parsed.instance_id).toBe("missing-id");
+  });
+
+  it("stop --id --json stops a specific registered instance with unique prefix", async () => {
+    const homeDir = join(tempDir, "instances-home");
+    const remoteProject = join(tempDir, "remote-project");
+    const remoteWorkspace = join(remoteProject, "workspaces");
+    const remoteWorkflow = join(remoteProject, "WORKFLOW.md");
+
+    await mkdir(remoteWorkspace, { recursive: true });
+    await writeFile(remoteWorkflow, MINIMAL_WORKFLOW);
+
+    const sleeper = Bun.spawn(["bun", "-e", "setInterval(() => {}, 1000)"], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+
+    const lockRecord: MockInstanceRecord = {
+      pid: sleeper.pid,
+      project_path: remoteProject,
+      workspace_root: remoteWorkspace,
+      workflow_file: remoteWorkflow,
+      started_at: new Date().toISOString(),
+    };
+
+    await writeFile(join(remoteProject, ".symphony.lock"), JSON.stringify(lockRecord, null, 2));
+    await setupMockInstancesRegistry(homeDir, [lockRecord]);
+
+    const instanceId = `${Bun.hash(remoteProject)}`;
+    const requestedId = findUniquePrefix(instanceId, [instanceId]);
+
+    try {
+      const { stdout, exitCode } = await runCli(
+        ["stop", "--id", requestedId, "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+        {
+          cwd: tempDir,
+          env: {
+            HOME: homeDir,
+          },
+        },
+      );
+
+      expect(exitCode).toBe(0);
+      const parsed = JSON.parse(stdout.trim());
+      expect(parsed.instance_id).toBe(instanceId);
+      expect(parsed.project_dir).toBe(remoteProject);
+      expect(parsed.workflow_file).toBe(remoteWorkflow);
+      expect(parsed.pid).toBe(sleeper.pid);
+      expect(parsed.killed).toBe(true);
+      expect(parsed.service_after).toMatchObject({
+        running: false,
+        pid: null,
+        started_at: null,
+        stale_lock: false,
+      });
+
+      expect(processExists(sleeper.pid)).toBe(false);
+      expect(await Bun.file(join(remoteProject, ".symphony.lock")).exists()).toBe(false);
+    } finally {
+      if (processExists(sleeper.pid)) {
+        try {
+          process.kill(sleeper.pid, "SIGKILL");
+        } catch {
+          // ignore cleanup races
+        }
+      }
+    }
+  });
+
+  it("stop --id --json returns instance_id_ambiguous for non-unique prefix", async () => {
+    const homeDir = join(tempDir, "instances-home-ambiguous");
+
+    const records: MockInstanceRecord[] = Array.from({ length: 20 }, (_, index) => {
+      const projectPath = join(tempDir, "ambiguous", `project-${index}`);
+      return {
+        pid: process.pid,
+        project_path: projectPath,
+        workspace_root: join(projectPath, "workspaces"),
+        workflow_file: join(projectPath, "WORKFLOW.md"),
+        started_at: new Date().toISOString(),
+      };
+    });
+
+    const ids = records.map((record) => `${Bun.hash(record.project_path)}`);
+    const prefix = findAmbiguousPrefix(ids);
+    const matchingIds = ids.filter((id) => id.startsWith(prefix));
+
+    expect(matchingIds.length).toBeGreaterThan(1);
+
+    await setupMockInstancesRegistry(homeDir, records);
+
+    const { stdout, exitCode } = await runCli(
+      ["stop", "--id", prefix, "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.error).toBe("instance_id_ambiguous");
+    expect(parsed.instance_id).toBe(prefix);
+    expect(Array.isArray(parsed.matches)).toBe(true);
+    expect(parsed.matches.length).toBeGreaterThan(1);
+
+    const parsedMatchIds = (parsed.matches as Array<{ instance_id: string }>).map(
+      (match) => match.instance_id,
+    );
+
+    for (const id of matchingIds) {
+      expect(parsedMatchIds).toContain(id);
+    }
+  });
+
+  it("stop --id text mode shows top matching IDs for ambiguous prefix", async () => {
+    const homeDir = join(tempDir, "instances-home-ambiguous-text");
+
+    const records: MockInstanceRecord[] = Array.from({ length: 20 }, (_, index) => {
+      const projectPath = join(tempDir, "ambiguous-text", `project-${index}`);
+      return {
+        pid: process.pid,
+        project_path: projectPath,
+        workspace_root: join(projectPath, "workspaces"),
+        workflow_file: join(projectPath, "WORKFLOW.md"),
+        started_at: new Date().toISOString(),
+      };
+    });
+
+    const ids = records.map((record) => `${Bun.hash(record.project_path)}`);
+    const prefix = findAmbiguousPrefix(ids);
+    const matchingIds = ids.filter((id) => id.startsWith(prefix));
+
+    expect(matchingIds.length).toBeGreaterThan(1);
+
+    await setupMockInstancesRegistry(homeDir, records);
+
+    const { stdout, exitCode } = await runCli(
+      ["stop", "--id", prefix, "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("matches multiple running instances");
+    expect(stdout).toContain("Matching instances (showing up to 3):");
+
+    const hasAnyMatchingId = matchingIds.some((id) => stdout.includes(id));
+    expect(hasAnyMatchingId).toBe(true);
+
+    expect(stdout).toContain("Use a longer --id prefix (or exact ID) from: symphony instances");
+  });
+
+  it("stop --all text mode prints section summary", async () => {
+    const homeDir = join(tempDir, "instances-home-text");
+    const remoteProject = join(tempDir, "remote-project-text");
+    const remoteWorkspace = join(remoteProject, "workspaces");
+    const remoteWorkflow = join(remoteProject, "WORKFLOW.md");
+
+    await mkdir(remoteWorkspace, { recursive: true });
+    await writeFile(remoteWorkflow, MINIMAL_WORKFLOW);
+
+    const sleeper = Bun.spawn(["bun", "-e", "setInterval(() => {}, 1000)"], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+
+    const lockRecord: MockInstanceRecord = {
+      pid: sleeper.pid,
+      project_path: remoteProject,
+      workspace_root: remoteWorkspace,
+      workflow_file: remoteWorkflow,
+      started_at: new Date().toISOString(),
+    };
+
+    await writeFile(join(remoteProject, ".symphony.lock"), JSON.stringify(lockRecord, null, 2));
+    await setupMockInstancesRegistry(homeDir, [lockRecord]);
+
+    try {
+      const { stdout, exitCode } = await runCli(
+        ["stop", "--all", "--workflow", join(tempDir, "WORKFLOW.md")],
+        {
+          cwd: tempDir,
+          env: {
+            HOME: homeDir,
+          },
+        },
+      );
+
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain("Stopping 1 symphony instance(s):");
+      expect(stdout).toContain("Instance 1:");
+      expect(stdout).toContain(`ID:       ${Bun.hash(remoteProject)}`);
+      expect(stdout).toContain(`Project:  ${remoteProject}`);
+      expect(stdout).toContain(`Workflow: ${remoteWorkflow}`);
+      expect(stdout).toContain("Summary:");
+      expect(stdout).toContain("Total:   1");
+      expect(stdout).toContain("Stopped: 1");
+
+      expect(processExists(sleeper.pid)).toBe(false);
+      expect(await Bun.file(join(remoteProject, ".symphony.lock")).exists()).toBe(false);
+    } finally {
+      if (processExists(sleeper.pid)) {
+        try {
+          process.kill(sleeper.pid, "SIGKILL");
+        } catch {
+          // ignore cleanup races
+        }
+      }
+    }
+  });
+
+  it("stop rejects combining --all and --id", async () => {
+    const { stdout, exitCode } = await runCli(
+      ["stop", "--all", "--id", "abc123", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      { cwd: tempDir },
+    );
+
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.error).toBe("stop_flag_conflict");
   });
 });
 

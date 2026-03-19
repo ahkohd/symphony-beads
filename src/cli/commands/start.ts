@@ -3,6 +3,7 @@ import { validateConfig } from "../../config.ts";
 import {
   acquireLock,
   checkWorkspaceCollisions,
+  getInstanceId,
   isPidAlive,
   readProjectLock,
   registerInstance,
@@ -18,6 +19,10 @@ import { WorkspaceManager } from "../../workspace.ts";
 import { exitCommandError, printJson } from "../output.ts";
 import type { Args } from "../types.ts";
 import { loadWorkflow, type ParsedWorkflow } from "../workflow.ts";
+
+const DAEMON_READY_TIMEOUT_MS = 10_000;
+const DAEMON_READY_POLL_MS = 100;
+const DAEMON_READY_STABILITY_MS = 300;
 
 export async function runStartCommand(args: Args): Promise<void> {
   const workflow = await loadWorkflow(args.workflow, args.json);
@@ -39,7 +44,9 @@ export async function runStartCommand(args: Args): Promise<void> {
 }
 
 async function daemonize(args: Args, config: ParsedWorkflow["config"]): Promise<void> {
-  const projectDir = resolve(dirname(args.workflow));
+  const workflowPath = resolve(args.workflow);
+  const projectDir = resolve(dirname(workflowPath));
+  const instanceId = getInstanceId(projectDir);
 
   const existingLock = await readProjectLock(projectDir);
   if (existingLock && isPidAlive(existingLock.pid)) {
@@ -48,16 +55,17 @@ async function daemonize(args: Args, config: ParsedWorkflow["config"]): Promise<
       args,
       payload: {
         error: "already_running",
+        instance_id: instanceId,
         pid: existingLock.pid,
+        project_dir: projectDir,
+        workflow_file: workflowPath,
         message,
       },
       message,
     });
   }
 
-  const logFile = config.log.file
-    ? resolve(dirname(args.workflow), config.log.file)
-    : resolve(dirname(args.workflow), "symphony.log");
+  const logFile = config.log.file ?? resolve(projectDir, "symphony.log");
 
   const { mkdir } = await import("node:fs/promises");
   const { closeSync, openSync } = await import("node:fs");
@@ -82,7 +90,7 @@ async function daemonize(args: Args, config: ParsedWorkflow["config"]): Promise<
 
   child.unref();
 
-  await Bun.sleep(500);
+  const readiness = await waitForDaemonReadiness(projectDir, child.pid, child);
 
   try {
     closeSync(logFd);
@@ -90,26 +98,155 @@ async function daemonize(args: Args, config: ParsedWorkflow["config"]): Promise<
     // ignore close errors
   }
 
-  if (child.exitCode !== null) {
-    const message = `daemon failed to start (exit code ${child.exitCode}). Check ${logFile} for details.`;
+  if (!readiness.ready) {
+    if (readiness.reason === "exited") {
+      const message = `daemon failed to start (exit code ${readiness.exitCode ?? "unknown"}). Check ${logFile} for details.`;
+      exitCommandError({
+        args,
+        payload: {
+          error: "daemon_failed",
+          instance_id: instanceId,
+          pid: child.pid,
+          exit_code: readiness.exitCode,
+          project_dir: projectDir,
+          workflow_file: workflowPath,
+          log_file: logFile,
+        },
+        message,
+        hint: `Try: symphony logs -f --workflow ${workflowPath}`,
+      });
+    }
+
+    const message =
+      `daemon did not become healthy within ${DAEMON_READY_TIMEOUT_MS}ms. ` +
+      `Check ${logFile} for details.`;
     exitCommandError({
       args,
       payload: {
-        error: "daemon_failed",
-        exit_code: child.exitCode,
+        error: "daemon_unhealthy",
+        instance_id: instanceId,
+        pid: child.pid,
+        project_dir: projectDir,
+        workflow_file: workflowPath,
         log_file: logFile,
+        timeout_ms: DAEMON_READY_TIMEOUT_MS,
+        lock_pid: readiness.lockPid,
       },
       message,
+      hint: `Try: symphony logs -f --workflow ${workflowPath}`,
     });
   }
 
   if (args.json) {
-    printJson({ started: true, pid: child.pid, log_file: logFile });
+    printJson({
+      started: true,
+      mode: "daemon",
+      instance_id: instanceId,
+      pid: child.pid,
+      project_dir: projectDir,
+      workflow_file: workflowPath,
+      log_file: logFile,
+    });
   } else {
     console.log(`symphony started (PID ${child.pid})`);
+    console.log(`  instance: ${instanceId}`);
+    console.log(`  project:  ${projectDir}`);
+    console.log(`  workflow: ${workflowPath}`);
+    console.log(`  log:      ${logFile}`);
   }
 
   process.exit(0);
+}
+
+interface DaemonReadinessResult {
+  ready: boolean;
+  reason: "ready" | "exited" | "timeout";
+  exitCode: number | null;
+  lockPid: number | null;
+}
+
+async function waitForDaemonReadiness(
+  projectDir: string,
+  expectedPid: number,
+  child: ReturnType<typeof Bun.spawn>,
+): Promise<DaemonReadinessResult> {
+  const deadline = Date.now() + DAEMON_READY_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      return {
+        ready: false,
+        reason: "exited",
+        exitCode: child.exitCode,
+        lockPid: null,
+      };
+    }
+
+    const lock = await readProjectLock(projectDir);
+    if (lock?.pid === expectedPid && isPidAlive(expectedPid)) {
+      await Bun.sleep(DAEMON_READY_STABILITY_MS);
+
+      if (child.exitCode !== null) {
+        return {
+          ready: false,
+          reason: "exited",
+          exitCode: child.exitCode,
+          lockPid: lock.pid,
+        };
+      }
+
+      const stableLock = await readProjectLock(projectDir);
+      if (stableLock?.pid === expectedPid && isPidAlive(expectedPid)) {
+        return {
+          ready: true,
+          reason: "ready",
+          exitCode: child.exitCode,
+          lockPid: stableLock.pid,
+        };
+      }
+    }
+
+    await Bun.sleep(DAEMON_READY_POLL_MS);
+  }
+
+  if (child.exitCode !== null) {
+    return {
+      ready: false,
+      reason: "exited",
+      exitCode: child.exitCode,
+      lockPid: null,
+    };
+  }
+
+  const lock = await readProjectLock(projectDir);
+  return {
+    ready: false,
+    reason: "timeout",
+    exitCode: child.exitCode,
+    lockPid: lock?.pid ?? null,
+  };
+}
+
+function printForegroundBanner(params: {
+  pid: number;
+  instanceId: string;
+  projectDir: string;
+  workflowPath: string;
+  workspaceRoot: string;
+  pollMs: number;
+  maxConcurrent: number;
+  logFile: string | null;
+}): void {
+  console.log("symphony starting in foreground");
+  console.log(`  pid:           ${params.pid}`);
+  console.log(`  instance:      ${params.instanceId}`);
+  console.log(`  project:       ${params.projectDir}`);
+  console.log(`  workflow:      ${params.workflowPath}`);
+  console.log(`  workspace:     ${params.workspaceRoot}`);
+  console.log(`  poll interval: ${params.pollMs}ms`);
+  console.log(`  max workers:   ${params.maxConcurrent}`);
+  console.log(`  log:           ${params.logFile ?? "(stdout)"}`);
+  console.log("");
 }
 
 async function runStartForeground(args: Args, workflow: ParsedWorkflow): Promise<void> {
@@ -119,20 +256,26 @@ async function runStartForeground(args: Args, workflow: ParsedWorkflow): Promise
     await setLogFile(config.log.file);
   }
 
-  const projectDir = resolve(dirname(args.workflow));
+  const workflowPath = resolve(args.workflow);
+  const projectDir = resolve(dirname(workflowPath));
+  const instanceId = getInstanceId(projectDir);
   const workspaceRoot = resolve(config.workspace.root);
 
   try {
-    await acquireLock(projectDir, workspaceRoot, args.workflow);
+    await acquireLock(projectDir, workspaceRoot, workflowPath);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     exitCommandError({
       args,
       payload: {
         error: "lock_failed",
+        instance_id: instanceId,
+        project_dir: projectDir,
+        workflow_file: workflowPath,
         message,
       },
       message,
+      hint: "If an instance is running, stop it with: symphony stop",
     });
   }
 
@@ -140,7 +283,7 @@ async function runStartForeground(args: Args, workflow: ParsedWorkflow): Promise
     pid: process.pid,
     project_path: resolve(projectDir),
     workspace_root: workspaceRoot,
-    workflow_file: args.workflow,
+    workflow_file: workflowPath,
     started_at: new Date().toISOString(),
   };
   await registerInstance(lockInfo);
@@ -155,30 +298,45 @@ async function runStartForeground(args: Args, workflow: ParsedWorkflow): Promise
       });
     }
 
-    if (args.json) {
-      printJson({
+    await releaseLock(projectDir);
+    await unregisterInstance(projectDir);
+
+    exitCommandError({
+      args,
+      payload: {
         error: "workspace_collision",
+        instance_id: instanceId,
+        project_dir: projectDir,
+        workflow_file: workflowPath,
+        workspace_root: workspaceRoot,
         conflicts: conflicts.map((conflict) => ({
           project: conflict.project_path,
           pid: conflict.pid,
           workspace: conflict.workspace_root,
         })),
-      });
-    } else {
-      log.error(
-        "Aborting: another symphony instance is using the same workspace root. " +
-          "Change workspace.root in your WORKFLOW.md to avoid conflicts.",
-      );
-    }
-
-    await releaseLock(projectDir);
-    await unregisterInstance(projectDir);
-    process.exit(1);
+      },
+      message:
+        "another symphony instance is using the same workspace root; " +
+        "change workspace.root in WORKFLOW.md to avoid collisions",
+      hint: `Run: symphony instances\nThen: symphony stop --all (or stop specific project)`,
+    });
   }
 
   if (!args.json) {
+    printForegroundBanner({
+      pid: process.pid,
+      instanceId,
+      projectDir,
+      workflowPath,
+      workspaceRoot,
+      pollMs: config.polling.interval_ms,
+      maxConcurrent: config.agent.max_concurrent,
+      logFile: config.log.file,
+    });
+
     log.info("symphony-beads starting", {
       pid: process.pid,
+      instance_id: instanceId,
       tracker: config.tracker.kind,
       project: config.tracker.project_path,
       workspace_root: workspaceRoot,
@@ -193,7 +351,6 @@ async function runStartForeground(args: Args, workflow: ParsedWorkflow): Promise
   const workspace = new WorkspaceManager(config);
   const orchestrator = new Orchestrator(config, workflow.prompt_template, tracker, workspace);
 
-  const workflowPath = resolve(args.workflow);
   const watcher = new WorkflowWatcher(workflowPath, orchestrator);
   await watcher.start();
 

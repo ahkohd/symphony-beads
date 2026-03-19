@@ -8,4 +8,5 @@ export interface Args {
   shortF: boolean;
   lines: number;
   all: boolean;
+  instanceId: string | null;
 }
