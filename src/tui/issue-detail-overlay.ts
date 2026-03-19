@@ -315,7 +315,8 @@ export class IssueDetailOverlay {
         Box(
           {
             border: ["top"],
-            borderColor: COLORS.border,
+            borderColor: COLORS.bg,
+            paddingTop: 1,
             paddingLeft: 2,
             paddingRight: 2,
             paddingBottom: 1,
