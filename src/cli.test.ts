@@ -392,6 +392,7 @@ Prompt.
 
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/warnings:\s+2/);
+    expect(stdout).toContain("use --strict in CI");
     expect(stdout).toContain("unknown config key: runner.commnd");
     expect(stdout).toContain("unknown config section: observability");
   });

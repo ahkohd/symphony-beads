@@ -52,7 +52,7 @@ export async function runValidateCommand(args: Args): Promise<void> {
     console.log(`  max_concurrent: ${workflow.config.agent.max_concurrent}`);
     console.log(`  poll_ms:        ${workflow.config.polling.interval_ms}`);
     console.log(`  prompt:         ${workflow.prompt_template.length} chars`);
-    printWarningsSummary(warnings);
+    printWarningsSummary(warnings, args.strict);
 
     for (const warning of warnings) {
       log.warn(warning);
@@ -70,7 +70,7 @@ export async function runValidateCommand(args: Args): Promise<void> {
     console.log("  strict mode enabled: warnings are treated as errors");
   }
 
-  printWarningsSummary(warnings);
+  printWarningsSummary(warnings, args.strict);
 
   for (const warning of warnings) {
     log.warn(warning);
@@ -79,10 +79,11 @@ export async function runValidateCommand(args: Args): Promise<void> {
   process.exit(1);
 }
 
-function printWarningsSummary(warnings: string[]): void {
+function printWarningsSummary(warnings: string[], strict: boolean): void {
   if (warnings.length === 0) {
     return;
   }
 
-  console.log(`  warnings:       ${warnings.length}`);
+  const hint = strict ? "(strict mode enabled)" : "(use --strict in CI)";
+  console.log(`  warnings:       ${warnings.length} ${hint}`);
 }
