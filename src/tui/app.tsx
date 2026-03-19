@@ -592,10 +592,10 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
       return;
     }
     const nextStatus = STATUS_ORDER[currentIdx + 1]!;
-    setStatusMsg(`moving ${issue.id} → ${nextStatus}…`);
+    setStatusMsg(`moving ${issue.id} to ${nextStatus}…`);
     const ok = await moveIssueStatus(issue.id, nextStatus);
     if (ok) {
-      setStatusMsg(`moved ${issue.id} → ${nextStatus}`);
+      setStatusMsg(`moved ${issue.id} to ${nextStatus}`);
       await refresh();
     } else {
       setStatusMsg(`failed to move ${issue.id}`);
@@ -611,10 +611,10 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
       return;
     }
     const prevStatus = STATUS_ORDER[currentIdx - 1]!;
-    setStatusMsg(`moving ${issue.id} → ${prevStatus}…`);
+    setStatusMsg(`moving ${issue.id} to ${prevStatus}…`);
     const ok = await moveIssueStatus(issue.id, prevStatus);
     if (ok) {
-      setStatusMsg(`moved ${issue.id} → ${prevStatus}`);
+      setStatusMsg(`moved ${issue.id} to ${prevStatus}`);
       await refresh();
     } else {
       setStatusMsg(`failed to move ${issue.id}`);
@@ -658,10 +658,10 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
       setStatusMsg(`${issue.id} is not deferred`);
       return;
     }
-    setStatusMsg(`promoting ${issue.id} → open…`);
+    setStatusMsg(`promoting ${issue.id} to open…`);
     const ok = await moveIssueStatus(issue.id, "open");
     if (ok) {
-      setStatusMsg(`promoted ${issue.id} → open`);
+      setStatusMsg(`promoted ${issue.id} to open`);
       await refresh();
     } else {
       setStatusMsg(`failed to promote ${issue.id}`);
@@ -830,9 +830,9 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
         setColumnSortModes((prev) => ({ ...prev, [col.key]: nextMode }));
 
         if (nextMode === "priority") {
-          setStatusMsg(`${col.label} sorted by priority (P0→P4)`);
+          setStatusMsg(`${col.label} sorted by priority (P0 to P4)`);
         } else if (col.key === "closed") {
-          setStatusMsg("Closed sorted by newest → oldest");
+          setStatusMsg("Closed sorted by newest to oldest");
         } else {
           setStatusMsg(`${col.label} using default order`);
         }
