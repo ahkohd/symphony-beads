@@ -20,13 +20,14 @@ import {
   Text,
 } from "@opentui/core";
 
-import { exec } from "../exec.ts";
+import { copyTextToClipboard, openExternalUrl } from "./action-utils.ts";
 import {
   fetchIssueComments,
   fetchIssueDetail,
   type IssueComment,
   type IssueDetail,
 } from "./issue-data.ts";
+import { canUsePrActions } from "./pr-link-resolver.ts";
 
 // -- Colors ------------------------------------------------------------------
 
@@ -68,49 +69,6 @@ const STATUS_COLORS: Record<string, string> = {
   closed: COLORS.textDim,
   done: COLORS.textDim,
 };
-
-function canOpenPr(status: string): boolean {
-  return status === "review" || status === "closed";
-}
-
-async function openExternalUrl(url: string): Promise<boolean> {
-  const command =
-    process.platform === "darwin"
-      ? ["open", url]
-      : process.platform === "win32"
-        ? ["cmd", "/c", "start", "", url]
-        : ["xdg-open", url];
-
-  const result = await exec(command, {
-    cwd: process.cwd(),
-    timeout: 5000,
-  });
-
-  return result.code === 0;
-}
-
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  const commands =
-    process.platform === "darwin"
-      ? [["pbcopy"]]
-      : process.platform === "win32"
-        ? [["cmd", "/c", "clip"]]
-        : [["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]];
-
-  for (const command of commands) {
-    const result = await exec(command, {
-      cwd: process.cwd(),
-      timeout: 5000,
-      stdin: text,
-    });
-
-    if (result.code === 0) {
-      return true;
-    }
-  }
-
-  return false;
-}
 
 // -- Types for VNode children ------------------------------------------------
 type VChild = ReturnType<typeof Box> | ReturnType<typeof Text> | null;
@@ -292,7 +250,7 @@ export class IssueDetailOverlay {
     const hasPrLink = Boolean(issue.pr_url);
     const footerText = hasPrLink
       ? " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom  o open PR  y copy PR"
-      : canOpenPr(issue.status)
+      : canUsePrActions(issue.status)
         ? " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom  no PR link found"
         : " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom";
 
@@ -536,7 +494,7 @@ export class IssueDetailOverlay {
   private async openCurrentIssuePr(): Promise<void> {
     const issue = this.currentIssue;
     if (!issue || this.openingPr) return;
-    if (!canOpenPr(issue.status) || !issue.pr_url) return;
+    if (!canUsePrActions(issue.status) || !issue.pr_url) return;
 
     this.openingPr = true;
     try {
@@ -549,7 +507,7 @@ export class IssueDetailOverlay {
   private async copyCurrentIssuePr(): Promise<void> {
     const issue = this.currentIssue;
     if (!issue || this.copyingPr) return;
-    if (!canOpenPr(issue.status) || !issue.pr_url) return;
+    if (!canUsePrActions(issue.status) || !issue.pr_url) return;
 
     this.copyingPr = true;
     try {

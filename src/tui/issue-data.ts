@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { exec } from "../exec.ts";
+import { resolvePrLink } from "./pr-link-resolver.ts";
 
 /** Full issue detail from `bd show <id> --json`. */
 export interface IssueDetail {
@@ -36,167 +37,36 @@ export interface IssueComment {
   created_at: string;
 }
 
-function extractPrUrl(text: string | null | undefined): string | null {
-  if (!text) return null;
-  const match = text.match(/https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/i);
-  return match ? match[0] : null;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
-function parsePrListUrl(raw: string): string | null {
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    for (const item of parsed) {
-      if (!item || typeof item !== "object") continue;
-      const url = (item as { url?: unknown }).url;
-      if (typeof url === "string" && url.trim()) {
-        return url;
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
+function asNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
 }
 
-function parsePrViewUrl(raw: string): string | null {
-  try {
-    const parsed = JSON.parse(raw) as { url?: unknown };
-    return typeof parsed.url === "string" && parsed.url.trim() ? parsed.url : null;
-  } catch {
-    return null;
-  }
+function asNullableNumber(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
 }
 
-function extractPrNumber(text: string | null | undefined): number | null {
-  if (!text) return null;
+function parseDependencies(raw: unknown): IssueDependency[] {
+  if (!Array.isArray(raw)) return [];
 
-  const patterns = [
-    /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/i,
-    /\bPR\b[^\n#]*#(\d+)/i,
-    /\bPR\b[^\n]*\(#(\d+)\)/i,
-  ];
+  const dependencies: IssueDependency[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
 
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (!match) continue;
-
-    const value = Number.parseInt(match[1] ?? "", 10);
-    if (Number.isFinite(value) && value > 0) {
-      return value;
-    }
+    dependencies.push({
+      id: asNullableString(item.id) ?? "",
+      title: asNullableString(item.title) ?? "",
+      status: asNullableString(item.status) ?? "unknown",
+      priority: asNullableNumber(item.priority),
+      issue_type: asNullableString(item.issue_type) ?? "task",
+      dependency_type: asNullableString(item.dependency_type) ?? "",
+    });
   }
 
-  return null;
-}
-
-function extractPrUrlFromComments(comments: unknown): string | null {
-  if (!Array.isArray(comments)) return null;
-
-  for (const raw of comments) {
-    if (!raw || typeof raw !== "object") continue;
-
-    const candidate = raw as {
-      text?: unknown;
-      body?: unknown;
-      content?: unknown;
-    };
-
-    const texts = [candidate.text, candidate.body, candidate.content];
-    for (const text of texts) {
-      if (typeof text !== "string") continue;
-      const url = extractPrUrl(text);
-      if (url) return url;
-    }
-  }
-
-  return null;
-}
-
-function extractPrNumberFromComments(comments: unknown): number | null {
-  if (!Array.isArray(comments)) return null;
-
-  for (const raw of comments) {
-    if (!raw || typeof raw !== "object") continue;
-
-    const candidate = raw as {
-      text?: unknown;
-      body?: unknown;
-      content?: unknown;
-    };
-
-    const texts = [candidate.text, candidate.body, candidate.content];
-    for (const text of texts) {
-      if (typeof text !== "string") continue;
-      const number = extractPrNumber(text);
-      if (number) return number;
-    }
-  }
-
-  return null;
-}
-
-async function lookupPrUrlByNumber(prNumber: number): Promise<string | null> {
-  const prView = await exec(["gh", "pr", "view", String(prNumber), "--json", "url"], {
-    cwd: process.cwd(),
-    timeout: 10000,
-  });
-
-  if (prView.code !== 0 || !prView.stdout.trim()) return null;
-  return parsePrViewUrl(prView.stdout);
-}
-
-async function lookupPrUrlViaGitHub(issueId: string): Promise<string | null> {
-  const byHead = await exec(
-    [
-      "gh",
-      "pr",
-      "list",
-      "--state",
-      "all",
-      "--head",
-      `issue/${issueId}`,
-      "--json",
-      "url",
-      "--limit",
-      "1",
-    ],
-    {
-      cwd: process.cwd(),
-      timeout: 10000,
-    },
-  );
-
-  if (byHead.code === 0 && byHead.stdout.trim()) {
-    const url = parsePrListUrl(byHead.stdout);
-    if (url) return url;
-  }
-
-  const byTitle = await exec(
-    [
-      "gh",
-      "pr",
-      "list",
-      "--state",
-      "all",
-      "--search",
-      `${issueId} in:title`,
-      "--json",
-      "url",
-      "--limit",
-      "1",
-    ],
-    {
-      cwd: process.cwd(),
-      timeout: 10000,
-    },
-  );
-
-  if (byTitle.code === 0 && byTitle.stdout.trim()) {
-    return parsePrListUrl(byTitle.stdout);
-  }
-
-  return null;
+  return dependencies;
 }
 
 /**
@@ -210,54 +80,35 @@ export async function fetchIssueDetail(issueId: string): Promise<IssueDetail | n
     });
     if (result.code !== 0 || !result.stdout.trim()) return null;
 
-    const parsed = JSON.parse(result.stdout);
-    // bd show --json returns an array with one item
-    const issue = Array.isArray(parsed) ? parsed[0] : parsed;
-    if (!issue) return null;
+    const parsed = JSON.parse(result.stdout) as unknown;
+    const candidate = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (!isRecord(candidate)) return null;
 
     const resolvedIssueId =
-      typeof issue.id === "string" && issue.id.trim() ? issue.id.trim() : issueId;
-    const status = typeof issue.status === "string" ? issue.status : "unknown";
+      typeof candidate.id === "string" && candidate.id.trim() ? candidate.id.trim() : issueId;
+    const status = typeof candidate.status === "string" ? candidate.status : "unknown";
 
-    // Try to extract PR URL from explicit field or textual content.
-    let prUrl: string | null = null;
-    if (typeof issue.pr_url === "string" && issue.pr_url.trim()) {
-      prUrl = issue.pr_url;
-    }
-
-    if (!prUrl) {
-      prUrl = extractPrUrl(typeof issue.description === "string" ? issue.description : null);
-    }
-
-    if (!prUrl) {
-      prUrl = extractPrUrlFromComments((issue as { comments?: unknown }).comments);
-    }
-
-    if (!prUrl) {
-      const prNumber = extractPrNumberFromComments((issue as { comments?: unknown }).comments);
-      if (prNumber) {
-        prUrl = await lookupPrUrlByNumber(prNumber);
-      }
-    }
-
-    // For review/closed issues, query GitHub by branch/title as final fallback.
-    if (!prUrl && (status === "review" || status === "closed")) {
-      prUrl = await lookupPrUrlViaGitHub(resolvedIssueId);
-    }
+    const prResolution = await resolvePrLink({
+      issueId: resolvedIssueId,
+      status,
+      prUrl: asNullableString(candidate.pr_url),
+      description: asNullableString(candidate.description),
+      comments: candidate.comments,
+    });
 
     return {
       id: resolvedIssueId,
-      title: issue.title ?? "(untitled)",
-      description: issue.description ?? null,
+      title: asNullableString(candidate.title) ?? "(untitled)",
+      description: asNullableString(candidate.description),
       status,
-      priority: issue.priority ?? null,
-      issue_type: issue.issue_type ?? "task",
-      owner: issue.owner ?? null,
-      created_at: issue.created_at ?? null,
-      created_by: issue.created_by ?? null,
-      updated_at: issue.updated_at ?? null,
-      dependencies: Array.isArray(issue.dependencies) ? issue.dependencies : [],
-      pr_url: prUrl,
+      priority: asNullableNumber(candidate.priority),
+      issue_type: asNullableString(candidate.issue_type) ?? "task",
+      owner: asNullableString(candidate.owner),
+      created_at: asNullableString(candidate.created_at),
+      created_by: asNullableString(candidate.created_by),
+      updated_at: asNullableString(candidate.updated_at),
+      dependencies: parseDependencies(candidate.dependencies),
+      pr_url: prResolution.url,
     };
   } catch {
     return null;
@@ -275,19 +126,26 @@ export async function fetchIssueComments(issueId: string): Promise<IssueComment[
     });
     if (result.code !== 0 || !result.stdout.trim()) return [];
 
-    const parsed = JSON.parse(result.stdout);
+    const parsed = JSON.parse(result.stdout) as unknown;
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.map((c: Record<string, unknown>) => ({
-      id: (c.id as string | undefined) ?? undefined,
-      author: (c.author as string | undefined) ?? (c.created_by as string | undefined) ?? "unknown",
-      body:
-        (c.text as string | undefined) ??
-        (c.body as string | undefined) ??
-        (c.content as string | undefined) ??
-        "",
-      created_at: (c.created_at as string | undefined) ?? "",
-    }));
+    const comments: IssueComment[] = [];
+    for (const item of parsed) {
+      if (!isRecord(item)) continue;
+
+      comments.push({
+        id: typeof item.id === "string" ? item.id : undefined,
+        author: asNullableString(item.author) ?? asNullableString(item.created_by) ?? "unknown",
+        body:
+          asNullableString(item.text) ??
+          asNullableString(item.body) ??
+          asNullableString(item.content) ??
+          "",
+        created_at: asNullableString(item.created_at) ?? "",
+      });
+    }
+
+    return comments;
   } catch {
     return [];
   }

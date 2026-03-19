@@ -15,9 +15,11 @@ import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { exec } from "../exec.ts";
+import { copyTextToClipboard, openExternalUrl } from "./action-utils.ts";
 import { fetchIssueDetail } from "./issue-data.ts";
 import { IssueDetailOverlay } from "./issue-detail-overlay.ts";
 import { NewIssueDialog } from "./new-issue-dialog.ts";
+import { canUsePrActions } from "./pr-link-resolver.ts";
 
 // -- Types -------------------------------------------------------------------
 
@@ -126,49 +128,6 @@ async function closeIssue(issueId: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function canOpenPr(status: string): boolean {
-  return status === "review" || status === "closed";
-}
-
-async function openExternalUrl(url: string): Promise<boolean> {
-  const command =
-    process.platform === "darwin"
-      ? ["open", url]
-      : process.platform === "win32"
-        ? ["cmd", "/c", "start", "", url]
-        : ["xdg-open", url];
-
-  const result = await exec(command, {
-    cwd: process.cwd(),
-    timeout: 5000,
-  });
-
-  return result.code === 0;
-}
-
-async function copyTextToClipboard(text: string): Promise<boolean> {
-  const commands =
-    process.platform === "darwin"
-      ? [["pbcopy"]]
-      : process.platform === "win32"
-        ? [["cmd", "/c", "clip"]]
-        : [["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]];
-
-  for (const command of commands) {
-    const result = await exec(command, {
-      cwd: process.cwd(),
-      timeout: 5000,
-      stdin: text,
-    });
-
-    if (result.code === 0) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 // -- Helpers -----------------------------------------------------------------
@@ -708,7 +667,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     const issue = getSelectedIssue();
     if (!issue) return;
 
-    if (!canOpenPr(issue.status)) {
+    if (!canUsePrActions(issue.status)) {
       setStatusMsg("PR open is available in review/closed");
       return;
     }
@@ -736,7 +695,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     const issue = getSelectedIssue();
     if (!issue) return;
 
-    if (!canOpenPr(issue.status)) {
+    if (!canUsePrActions(issue.status)) {
       setStatusMsg("PR copy is available in review/closed");
       return;
     }
