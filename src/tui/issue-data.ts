@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { exec } from "../exec.ts";
+import { parsePrListUrl, parsePrViewUrl, resolvePrUrlForIssue } from "./pr-link-resolver.ts";
 
 /** Full issue detail from `bd show <id> --json`. */
 export interface IssueDetail {
@@ -34,106 +35,6 @@ export interface IssueComment {
   author: string;
   body: string;
   created_at: string;
-}
-
-function extractPrUrl(text: string | null | undefined): string | null {
-  if (!text) return null;
-  const match = text.match(/https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/i);
-  return match ? match[0] : null;
-}
-
-function parsePrListUrl(raw: string): string | null {
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    for (const item of parsed) {
-      if (!item || typeof item !== "object") continue;
-      const url = (item as { url?: unknown }).url;
-      if (typeof url === "string" && url.trim()) {
-        return url;
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function parsePrViewUrl(raw: string): string | null {
-  try {
-    const parsed = JSON.parse(raw) as { url?: unknown };
-    return typeof parsed.url === "string" && parsed.url.trim() ? parsed.url : null;
-  } catch {
-    return null;
-  }
-}
-
-function extractPrNumber(text: string | null | undefined): number | null {
-  if (!text) return null;
-
-  const patterns = [
-    /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/i,
-    /\bPR\b[^\n#]*#(\d+)/i,
-    /\bPR\b[^\n]*\(#(\d+)\)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (!match) continue;
-
-    const value = Number.parseInt(match[1] ?? "", 10);
-    if (Number.isFinite(value) && value > 0) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
-function extractPrUrlFromComments(comments: unknown): string | null {
-  if (!Array.isArray(comments)) return null;
-
-  for (const raw of comments) {
-    if (!raw || typeof raw !== "object") continue;
-
-    const candidate = raw as {
-      text?: unknown;
-      body?: unknown;
-      content?: unknown;
-    };
-
-    const texts = [candidate.text, candidate.body, candidate.content];
-    for (const text of texts) {
-      if (typeof text !== "string") continue;
-      const url = extractPrUrl(text);
-      if (url) return url;
-    }
-  }
-
-  return null;
-}
-
-function extractPrNumberFromComments(comments: unknown): number | null {
-  if (!Array.isArray(comments)) return null;
-
-  for (const raw of comments) {
-    if (!raw || typeof raw !== "object") continue;
-
-    const candidate = raw as {
-      text?: unknown;
-      body?: unknown;
-      content?: unknown;
-    };
-
-    const texts = [candidate.text, candidate.body, candidate.content];
-    for (const text of texts) {
-      if (typeof text !== "string") continue;
-      const number = extractPrNumber(text);
-      if (number) return number;
-    }
-  }
-
-  return null;
 }
 
 async function lookupPrUrlByNumber(prNumber: number): Promise<string | null> {
@@ -215,35 +116,19 @@ export async function fetchIssueDetail(issueId: string): Promise<IssueDetail | n
     const issue = Array.isArray(parsed) ? parsed[0] : parsed;
     if (!issue) return null;
 
+    const issueRecord = issue as Record<string, unknown>;
+
     const resolvedIssueId =
-      typeof issue.id === "string" && issue.id.trim() ? issue.id.trim() : issueId;
-    const status = typeof issue.status === "string" ? issue.status : "unknown";
+      typeof issueRecord.id === "string" && issueRecord.id.trim() ? issueRecord.id.trim() : issueId;
+    const status = typeof issueRecord.status === "string" ? issueRecord.status : "unknown";
 
-    // Try to extract PR URL from explicit field or textual content.
-    let prUrl: string | null = null;
-    if (typeof issue.pr_url === "string" && issue.pr_url.trim()) {
-      prUrl = issue.pr_url;
-    }
-
-    if (!prUrl) {
-      prUrl = extractPrUrl(typeof issue.description === "string" ? issue.description : null);
-    }
-
-    if (!prUrl) {
-      prUrl = extractPrUrlFromComments((issue as { comments?: unknown }).comments);
-    }
-
-    if (!prUrl) {
-      const prNumber = extractPrNumberFromComments((issue as { comments?: unknown }).comments);
-      if (prNumber) {
-        prUrl = await lookupPrUrlByNumber(prNumber);
-      }
-    }
-
-    // For review/closed issues, query GitHub by branch/title as final fallback.
-    if (!prUrl && (status === "review" || status === "closed")) {
-      prUrl = await lookupPrUrlViaGitHub(resolvedIssueId);
-    }
+    const prUrl = await resolvePrUrlForIssue({
+      issue: issueRecord,
+      issueId: resolvedIssueId,
+      status,
+      lookupPrUrlByNumber,
+      lookupPrUrlViaGitHub,
+    });
 
     return {
       id: resolvedIssueId,
