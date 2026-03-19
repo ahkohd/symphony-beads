@@ -89,6 +89,29 @@ async function openExternalUrl(url: string): Promise<boolean> {
   return result.code === 0;
 }
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  const commands =
+    process.platform === "darwin"
+      ? [["pbcopy"]]
+      : process.platform === "win32"
+        ? [["cmd", "/c", "clip"]]
+        : [["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]];
+
+  for (const command of commands) {
+    const result = await exec(command, {
+      cwd: process.cwd(),
+      timeout: 5000,
+      stdin: text,
+    });
+
+    if (result.code === 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // -- Types for VNode children ------------------------------------------------
 type VChild = ReturnType<typeof Box> | ReturnType<typeof Text> | null;
 
@@ -102,6 +125,7 @@ export class IssueDetailOverlay {
   private showToken = 0;
   private currentIssue: IssueDetail | null = null;
   private openingPr = false;
+  private copyingPr = false;
 
   constructor(renderer: CliRenderer) {
     this.renderer = renderer;
@@ -166,6 +190,7 @@ export class IssueDetailOverlay {
 
     this.currentIssue = null;
     this.openingPr = false;
+    this.copyingPr = false;
 
     if (notifyClose && wasVisible) {
       this.onCloseCallback?.();
@@ -264,9 +289,12 @@ export class IssueDetailOverlay {
       }
     }
 
-    const footerText = canOpenPr(issue.status)
-      ? " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom  o open PR"
-      : " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom";
+    const hasPrLink = Boolean(issue.pr_url);
+    const footerText = hasPrLink
+      ? " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom  o open PR  y copy PR"
+      : canOpenPr(issue.status)
+        ? " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom  no PR link found"
+        : " Esc close  \u2191\u2193/jk scroll  Ctrl-u/d half-page  g/G top/bottom";
 
     // Filter out nulls
     const validChildren = children.filter((c): c is NonNullable<VChild> => c != null);
@@ -518,6 +546,19 @@ export class IssueDetailOverlay {
     }
   }
 
+  private async copyCurrentIssuePr(): Promise<void> {
+    const issue = this.currentIssue;
+    if (!issue || this.copyingPr) return;
+    if (!canOpenPr(issue.status) || !issue.pr_url) return;
+
+    this.copyingPr = true;
+    try {
+      await copyTextToClipboard(issue.pr_url);
+    } finally {
+      this.copyingPr = false;
+    }
+  }
+
   private installKeyHandler(): void {
     if (this.keyHandler) {
       this.renderer.keyInput.off("keypress", this.keyHandler);
@@ -560,6 +601,13 @@ export class IssueDetailOverlay {
         key.preventDefault();
         key.stopPropagation();
         void this.openCurrentIssuePr();
+        return;
+      }
+
+      if (key.name === "y") {
+        key.preventDefault();
+        key.stopPropagation();
+        void this.copyCurrentIssuePr();
         return;
       }
 

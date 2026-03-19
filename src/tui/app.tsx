@@ -7,7 +7,7 @@
 // m/M moves status, b sends to backlog (deferred),
 // B promotes from backlog to open, s sorts current column,
 // n opens issue-creation guidance, d closes/deletes,
-// o opens PR for review/closed issues when available.
+// o opens PR and y copies PR link for review/closed issues when available.
 //
 // ---------------------------------------------------------------------------
 
@@ -146,6 +146,29 @@ async function openExternalUrl(url: string): Promise<boolean> {
   });
 
   return result.code === 0;
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  const commands =
+    process.platform === "darwin"
+      ? [["pbcopy"]]
+      : process.platform === "win32"
+        ? [["cmd", "/c", "clip"]]
+        : [["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]];
+
+  for (const command of commands) {
+    const result = await exec(command, {
+      cwd: process.cwd(),
+      timeout: 5000,
+      stdin: text,
+    });
+
+    if (result.code === 0) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // -- Helpers -----------------------------------------------------------------
@@ -486,6 +509,8 @@ function Footer() {
         <span fg={COLORS.text}> close </span>
         <span fg={COLORS.textDim}>o</span>
         <span fg={COLORS.text}> open PR (review/closed) </span>
+        <span fg={COLORS.textDim}>y</span>
+        <span fg={COLORS.text}> copy PR link </span>
         <span fg={COLORS.textDim}>r</span>
         <span fg={COLORS.text}> refresh </span>
         <span fg={COLORS.textDim}>q</span>
@@ -704,6 +729,34 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
       setStatusMsg(`opened PR for ${issue.id}`);
     } else {
       setStatusMsg(`failed to open PR for ${issue.id}`);
+    }
+  }, [getSelectedIssue]);
+
+  const handleCopyPrLink = useCallback(async () => {
+    const issue = getSelectedIssue();
+    if (!issue) return;
+
+    if (!canOpenPr(issue.status)) {
+      setStatusMsg("PR copy is available in review/closed");
+      return;
+    }
+
+    setStatusMsg(`loading PR for ${issue.id}…`);
+    const detail = await fetchIssueDetail(issue.id);
+    const prUrl = detail?.pr_url;
+
+    if (!prUrl) {
+      setStatusMsg(`no PR found for ${issue.id}`);
+      return;
+    }
+
+    setStatusMsg(`copying PR for ${issue.id}…`);
+    const copied = await copyTextToClipboard(prUrl);
+
+    if (copied) {
+      setStatusMsg(`copied PR for ${issue.id}`);
+    } else {
+      setStatusMsg(`failed to copy PR for ${issue.id}`);
     }
   }, [getSelectedIssue]);
 
@@ -934,6 +987,10 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
 
       case "o":
         handleOpenPr();
+        break;
+
+      case "y":
+        handleCopyPrLink();
         break;
 
       case "n":
