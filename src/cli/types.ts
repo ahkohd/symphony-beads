@@ -10,4 +10,5 @@ export interface Args {
   all: boolean;
   instanceId: string | null;
   strict: boolean;
+  fix: boolean;
 }

@@ -2,11 +2,18 @@
 // Doctor — verify all dependencies, config, and runtime state
 // ---------------------------------------------------------------------------
 
-import { readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, readdir, stat } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { parseWorkflow, validateConfig } from "./config.ts";
 import { exec } from "./exec.ts";
-import { checkWorkspaceCollisions, type LockInfo, listInstances } from "./lock.ts";
+import {
+  checkWorkspaceCollisions,
+  isPidAlive,
+  type LockInfo,
+  listInstances,
+  readProjectLock,
+  releaseLock,
+} from "./lock.ts";
 
 export interface CheckResult {
   name: string;
@@ -18,6 +25,19 @@ export interface CheckResult {
 export interface DoctorReport {
   ok: boolean;
   checks: CheckResult[];
+}
+
+export interface DoctorFixAction {
+  name: string;
+  ok: boolean;
+  changed: boolean;
+  detail: string;
+}
+
+export interface DoctorFixReport {
+  ok: boolean;
+  changed: number;
+  actions: DoctorFixAction[];
 }
 
 export async function runDoctor(workflowPath: string): Promise<DoctorReport> {
@@ -58,6 +78,103 @@ export async function runDoctor(workflowPath: string): Promise<DoctorReport> {
 
   const ok = checks.every((c) => c.ok);
   return { ok, checks };
+}
+
+export async function runDoctorFix(workflowPath: string): Promise<DoctorFixReport> {
+  const actions: DoctorFixAction[] = [];
+
+  actions.push(await fixStaleProjectLock(workflowPath));
+  actions.push(await ensureWorkspaceRootExists(workflowPath));
+
+  const ok = actions.every((action) => action.ok);
+  const changed = actions.filter((action) => action.changed).length;
+
+  return { ok, changed, actions };
+}
+
+async function fixStaleProjectLock(workflowPath: string): Promise<DoctorFixAction> {
+  const projectDir = resolve(dirname(workflowPath));
+
+  try {
+    const lock = await readProjectLock(projectDir);
+    if (!lock) {
+      return {
+        name: "stale-project-lock",
+        ok: true,
+        changed: false,
+        detail: "no project lock file",
+      };
+    }
+
+    if (isPidAlive(lock.pid)) {
+      return {
+        name: "stale-project-lock",
+        ok: true,
+        changed: false,
+        detail: `project lock is active (PID ${lock.pid})`,
+      };
+    }
+
+    await releaseLock(projectDir);
+    return {
+      name: "stale-project-lock",
+      ok: true,
+      changed: true,
+      detail: `removed stale project lock for dead PID ${lock.pid}`,
+    };
+  } catch (error) {
+    return {
+      name: "stale-project-lock",
+      ok: false,
+      changed: false,
+      detail: String(error),
+    };
+  }
+}
+
+async function ensureWorkspaceRootExists(workflowPath: string): Promise<DoctorFixAction> {
+  try {
+    const file = Bun.file(workflowPath);
+    if (!(await file.exists())) {
+      return {
+        name: "workspace-root",
+        ok: false,
+        changed: false,
+        detail: `workflow file not found: ${workflowPath}`,
+      };
+    }
+
+    const content = await file.text();
+    const workflow = parseWorkflow(content);
+    const workflowDir = resolve(dirname(workflowPath));
+    const workspaceRoot = resolve(workflowDir, workflow.config.workspace.root);
+
+    const existed = await pathExists(workspaceRoot);
+    await mkdir(workspaceRoot, { recursive: true });
+
+    return {
+      name: "workspace-root",
+      ok: true,
+      changed: !existed,
+      detail: existed ? `already exists: ${workspaceRoot}` : `created: ${workspaceRoot}`,
+    };
+  } catch (error) {
+    return {
+      name: "workspace-root",
+      ok: false,
+      changed: false,
+      detail: String(error),
+    };
+  }
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function checkBinary(name: string, args: string[], label: string): Promise<CheckResult> {
@@ -176,7 +293,7 @@ async function checkWorkspaces(workflowPath: string): Promise<CheckResult> {
     }
     const content = await file.text();
     const workflow = parseWorkflow(content);
-    const root = resolve(workflow.config.workspace.root);
+    const root = resolve(dirname(workflowPath), workflow.config.workspace.root);
 
     let entries: string[];
     try {

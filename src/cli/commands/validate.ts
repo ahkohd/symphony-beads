@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import { findUnknownWorkflowKeys, validateConfig } from "../../config.ts";
 import { checkWorkspaceCollisions } from "../../lock.ts";
 import { log } from "../../log.ts";
+import type { ServiceConfig } from "../../types.ts";
 import { printJson } from "../output.ts";
 import type { Args } from "../types.ts";
 import { loadWorkflow } from "../workflow.ts";
@@ -17,6 +18,7 @@ export async function runValidateCommand(args: Args): Promise<void> {
 
   const source = await Bun.file(workflowPath).text();
   const warnings = findUnknownWorkflowKeys(source);
+  warnings.push(...findBootstrapSourceWarnings(workflow.config));
 
   for (const conflict of conflicts) {
     warnings.push(
@@ -77,6 +79,29 @@ export async function runValidateCommand(args: Args): Promise<void> {
   }
 
   process.exit(1);
+}
+
+function findBootstrapSourceWarnings(config: ServiceConfig): string[] {
+  const afterCreate = config.hooks.after_create ?? "";
+  const usesCloneBootstrap =
+    afterCreate.includes("git clone") || afterCreate.includes("gh repo clone");
+
+  if (!usesCloneBootstrap) {
+    return [];
+  }
+
+  const repo = config.workspace.repo?.trim() ?? "";
+  const repoConfigured = repo.length > 0 && !repo.startsWith("$");
+  const repoUrlConfigured = Boolean(process.env.REPO_URL?.trim());
+
+  if (repoConfigured || repoUrlConfigured) {
+    return [];
+  }
+
+  const repoHint = repo.length > 0 ? ` (current workspace.repo: ${repo})` : "";
+  return [
+    `bootstrap clone source may be missing: set workspace.repo (owner/repo) or export REPO_URL${repoHint}`,
+  ];
 }
 
 function printWarningsSummary(warnings: string[], strict: boolean): void {

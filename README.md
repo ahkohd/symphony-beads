@@ -72,6 +72,9 @@ Stop flags:
 
 Validate flags:
   --strict          Treat warnings as errors (non-zero exit)
+
+Doctor flags:
+  --fix             Apply safe automatic repairs before checks
 ```
 
 ### Instance IDs (deterministic) and targeted stop
@@ -100,11 +103,21 @@ Prefix matching rules for `stop --id`:
 ### Validate warnings and strict mode
 
 `validate` reports unknown `WORKFLOW.md` sections/keys as warnings to catch typos.
+It also warns when clone bootstrap hooks appear to have no repository source (`workspace.repo` and `REPO_URL` both missing).
 Use strict mode when you want warnings to fail CI:
 
 ```bash
 symphony validate --strict
 ```
+
+### Doctor auto-fix mode
+
+`doctor --fix` runs safe, non-destructive repairs before checks:
+
+- remove a stale project `.symphony.lock` (dead PID)
+- ensure the configured `workspace.root` directory exists
+
+Then it runs the normal doctor checks and reports final health.
 
 ## How it works
 

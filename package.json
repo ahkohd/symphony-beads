@@ -14,6 +14,7 @@
     "fmt": "bunx @biomejs/biome format --write src/",
     "fmt:check": "bunx @biomejs/biome format src/",
     "typecheck": "bun x tsc --noEmit",
+    "smoke:cli": "bash ./scripts/cli-smoke.sh",
     "check": "bun run lint && bun run typecheck && bun run test"
   },
   "dependencies": {

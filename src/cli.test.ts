@@ -82,6 +82,84 @@ exit 1
   return binDir;
 }
 
+async function setupMockDoctorTools(dir: string): Promise<string> {
+  const binDir = join(dir, "doctor-bin");
+  await mkdir(binDir, { recursive: true });
+
+  const scripts: Record<string, string> = {
+    bd: `#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -ge 1 ] && [ "$1" = "version" ]; then
+  echo "bd 0.0.0"
+  exit 0
+fi
+
+if [ "$#" -ge 4 ] && [ "$1" = "list" ] && [ "$2" = "--all" ] && [ "$3" = "--json" ] && [ "$4" = "--limit" ]; then
+  echo "[]"
+  exit 0
+fi
+
+if [ "$#" -ge 2 ] && [ "$1" = "list" ] && [ "$2" = "--json" ]; then
+  echo "[]"
+  exit 0
+fi
+
+if [ "$#" -ge 2 ] && [ "$1" = "dolt" ] && [ "$2" = "status" ]; then
+  echo "stopped"
+  exit 1
+fi
+
+if [ "$#" -ge 2 ] && [ "$1" = "config" ] && [ "$2" = "set" ]; then
+  exit 0
+fi
+
+echo "unsupported bd args: $*" >&2
+exit 1
+`,
+    dolt: `#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -ge 1 ] && [ "$1" = "version" ]; then
+  echo "dolt version 0.0.0"
+  exit 0
+fi
+
+echo "unsupported dolt args: $*" >&2
+exit 1
+`,
+    pi: `#!/usr/bin/env bash
+set -euo pipefail
+
+echo "pi 0.0.0"
+`,
+    gh: `#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -ge 1 ] && [ "$1" = "--version" ]; then
+  echo "gh version 0.0.0"
+  exit 0
+fi
+
+if [ "$#" -ge 2 ] && [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  echo "Logged in to github.com as mock-user" >&2
+  exit 0
+fi
+
+echo "unsupported gh args: $*" >&2
+exit 1
+`,
+  };
+
+  for (const [name, script] of Object.entries(scripts)) {
+    const path = join(binDir, name);
+    await writeFile(path, script);
+    await chmod(path, 0o755);
+  }
+
+  return binDir;
+}
+
 interface MockInstanceRecord {
   pid: number;
   project_path: string;
@@ -296,6 +374,12 @@ describe("parseArgs -f flag", () => {
     expect(args.command).toBe("validate");
     expect(args.strict).toBe(true);
   });
+
+  it("--fix enables doctor fix mode", () => {
+    const args = parseArgs(["doctor", "--fix"]);
+    expect(args.command).toBe("doctor");
+    expect(args.fix).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -360,6 +444,44 @@ Prompt.
     expect(parsed.errors).toEqual([]);
     expect(parsed.warnings).toContain("unknown config key: runner.commnd");
     expect(parsed.warnings).toContain("unknown config section: observability");
+  });
+
+  it("validate warns when bootstrap clone source is missing", async () => {
+    const workflowPath = join(tempDir, "WORKFLOW-bootstrap-warning.md");
+    const workflowWithCloneHook = `---
+tracker:
+  kind: beads
+  project_path: "."
+workspace:
+  root: ./workspaces
+  repo: $SYMPHONY_REPO
+hooks:
+  after_create: |
+    git clone "$REPO_URL" .
+runner:
+  command: echo noop
+polling:
+  interval_ms: 30000
+---
+Prompt.
+`;
+
+    await writeFile(workflowPath, workflowWithCloneHook);
+
+    const { stdout, exitCode } = await runCli(["validate", "--json", "--workflow", workflowPath], {
+      cwd: tempDir,
+      env: {
+        HOME: join(tempDir, "isolated-home"),
+        REPO_URL: "",
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.valid).toBe(true);
+    expect(parsed.warnings).toContain(
+      "bootstrap clone source may be missing: set workspace.repo (owner/repo) or export REPO_URL (current workspace.repo: $SYMPHONY_REPO)",
+    );
   });
 
   it("validate text mode prints warnings count summary", async () => {
@@ -444,6 +566,124 @@ Prompt.
       cwd: tempDir,
     });
     expect(exitCode).not.toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Doctor subcommand
+// ---------------------------------------------------------------------------
+
+describe("CLI doctor", () => {
+  it("doctor --json includes workspace-overlap check", async () => {
+    const binDir = await setupMockDoctorTools(tempDir);
+    const homeDir = join(tempDir, "doctor-home-ok");
+    await mkdir(homeDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli(
+      ["doctor", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.ok).toBe(true);
+    expect(Array.isArray(parsed.checks)).toBe(true);
+    expect(
+      parsed.checks.some((check: { name: string }) => check.name === "workspace-overlap"),
+    ).toBe(true);
+  });
+
+  it("doctor --json exits non-zero when workspace overlaps are detected", async () => {
+    const binDir = await setupMockDoctorTools(tempDir);
+    const homeDir = join(tempDir, "doctor-home-overlap");
+    await mkdir(homeDir, { recursive: true });
+
+    await setupMockInstancesRegistry(homeDir, [
+      {
+        pid: process.pid,
+        project_path: join(tempDir, "project-a"),
+        workspace_root: "/tmp/shared-workspaces",
+        workflow_file: join(tempDir, "project-a", "WORKFLOW.md"),
+        started_at: new Date().toISOString(),
+      },
+      {
+        pid: process.pid,
+        project_path: join(tempDir, "project-b"),
+        workspace_root: "/tmp/shared-workspaces/subdir",
+        workflow_file: join(tempDir, "project-b", "WORKFLOW.md"),
+        started_at: new Date().toISOString(),
+      },
+    ]);
+
+    const { stdout, exitCode } = await runCli(
+      ["doctor", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(1);
+
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.ok).toBe(false);
+    const overlap = parsed.checks.find(
+      (check: { name: string }) => check.name === "workspace-overlap",
+    );
+    expect(overlap).toBeDefined();
+    expect(overlap.ok).toBe(false);
+  });
+
+  it("doctor --fix removes stale project lock and reports fix actions", async () => {
+    const binDir = await setupMockDoctorTools(tempDir);
+    const homeDir = join(tempDir, "doctor-home-fix");
+    await mkdir(homeDir, { recursive: true });
+
+    const lockPath = join(tempDir, ".symphony.lock");
+    await writeFile(
+      lockPath,
+      JSON.stringify(
+        {
+          pid: 999999,
+          project_path: tempDir,
+          workspace_root: join(tempDir, "workspaces"),
+          workflow_file: join(tempDir, "WORKFLOW.md"),
+          started_at: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+
+    const { stdout, exitCode } = await runCli(
+      ["doctor", "--fix", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.fix).toBeDefined();
+    expect(parsed.fix.changed).toBeGreaterThan(0);
+
+    const lockFile = Bun.file(lockPath);
+    expect(await lockFile.exists()).toBe(false);
   });
 });
 
