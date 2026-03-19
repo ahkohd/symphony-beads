@@ -6,8 +6,8 @@
 // Global:      ~/.symphony/instances/<hash>.json for cross-project checks
 // ---------------------------------------------------------------------------
 
-import { mkdir, readdir, rm } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, readdir, realpath, rm } from "node:fs/promises";
+import { isAbsolute, relative, resolve } from "node:path";
 import { log } from "./log.ts";
 
 /** Stored in .symphony.lock and in the global instance registry. */
@@ -104,7 +104,7 @@ export async function unregisterInstance(projectPath: string): Promise<void> {
 
 /**
  * Check all registered instances for workspace root collisions.
- * Returns an array of conflicts (other projects using the same workspace root).
+ * Returns an array of conflicts (other projects with overlapping workspace roots).
  */
 export async function checkWorkspaceCollisions(
   myProjectPath: string,
@@ -112,7 +112,7 @@ export async function checkWorkspaceCollisions(
 ): Promise<LockInfo[]> {
   const dir = registryDir();
   const absProject = resolve(myProjectPath);
-  const absWorkspace = resolve(myWorkspaceRoot);
+  const normalizedWorkspace = await normalizeWorkspacePath(myWorkspaceRoot);
   const conflicts: LockInfo[] = [];
 
   let entries: string[];
@@ -137,8 +137,9 @@ export async function checkWorkspaceCollisions(
       continue;
     }
 
-    // Check for workspace root collision
-    if (resolve(info.workspace_root) === absWorkspace) {
+    // Check for exact match or nested overlap
+    const otherWorkspace = await normalizeWorkspacePath(info.workspace_root);
+    if (pathsOverlap(otherWorkspace, normalizedWorkspace)) {
       conflicts.push(info);
     }
   }
@@ -180,6 +181,29 @@ export async function listInstances(): Promise<LockInfo[]> {
 }
 
 // -- Helpers -----------------------------------------------------------------
+
+async function normalizeWorkspacePath(path: string): Promise<string> {
+  const absolutePath = resolve(path);
+
+  try {
+    return normalizePathCase(resolve(await realpath(absolutePath)));
+  } catch {
+    return normalizePathCase(absolutePath);
+  }
+}
+
+function normalizePathCase(path: string): string {
+  return process.platform === "win32" ? path.toLowerCase() : path;
+}
+
+function isPathWithin(path: string, base: string): boolean {
+  const rel = relative(base, path);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+function pathsOverlap(pathA: string, pathB: string): boolean {
+  return pathA === pathB || isPathWithin(pathA, pathB) || isPathWithin(pathB, pathA);
+}
 
 async function readLock(lockPath: string): Promise<LockInfo | null> {
   return readLockFile(lockPath);

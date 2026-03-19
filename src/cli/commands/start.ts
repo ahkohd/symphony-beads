@@ -316,7 +316,7 @@ async function runStartForeground(args: Args, workflow: ParsedWorkflow): Promise
         })),
       },
       message:
-        "another symphony instance is using the same workspace root; " +
+        "another symphony instance has an overlapping workspace root; " +
         "change workspace.root in WORKFLOW.md to avoid collisions",
       hint: `Run: symphony instances\nThen: symphony stop --all (or stop specific project)`,
     });

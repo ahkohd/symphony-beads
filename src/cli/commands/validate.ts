@@ -20,7 +20,7 @@ export async function runValidateCommand(args: Args): Promise<void> {
 
   for (const conflict of conflicts) {
     warnings.push(
-      `workspace root collision: "${workspaceRoot}" is also used by project "${conflict.project_path}" (PID ${conflict.pid})`,
+      `workspace root collision: "${workspaceRoot}" overlaps with workspace root "${conflict.workspace_root}" from project "${conflict.project_path}" (PID ${conflict.pid})`,
     );
   }
 
