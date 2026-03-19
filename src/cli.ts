@@ -43,6 +43,7 @@ export function parseArgs(argv: string[]): Args {
     instanceId: null,
     strict: false,
     fix: false,
+    dryRun: false,
   };
 
   const positional: string[] = [];
@@ -94,6 +95,9 @@ export function parseArgs(argv: string[]): Args {
         break;
       case "--fix":
         args.fix = true;
+        break;
+      case "--dry-run":
+        args.dryRun = true;
         break;
       case "-h":
       case "--help":
@@ -181,7 +185,8 @@ Validate flags:
   --strict         Treat warnings as errors (non-zero exit)
 
 Doctor flags:
-  --fix            Apply safe automatic repairs before running checks`);
+  --fix            Apply safe automatic repairs before running checks
+  --dry-run        Preview doctor fixes without applying changes`);
 }
 
 function printVersion(json: boolean): void {

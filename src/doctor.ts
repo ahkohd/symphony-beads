@@ -8,9 +8,11 @@ import { parseWorkflow, validateConfig } from "./config.ts";
 import { exec } from "./exec.ts";
 import {
   checkWorkspaceCollisions,
+  getInstanceId,
   isPidAlive,
   type LockInfo,
   listInstances,
+  pruneStaleRegistryEntries,
   readProjectLock,
   releaseLock,
 } from "./lock.ts";
@@ -20,6 +22,7 @@ export interface CheckResult {
   ok: boolean;
   detail: string;
   version?: string;
+  hints?: string[];
 }
 
 export interface DoctorReport {
@@ -31,12 +34,15 @@ export interface DoctorFixAction {
   name: string;
   ok: boolean;
   changed: boolean;
+  would_change: boolean;
   detail: string;
 }
 
 export interface DoctorFixReport {
   ok: boolean;
+  dry_run: boolean;
   changed: number;
+  would_change: number;
   actions: DoctorFixAction[];
 }
 
@@ -80,19 +86,38 @@ export async function runDoctor(workflowPath: string): Promise<DoctorReport> {
   return { ok, checks };
 }
 
-export async function runDoctorFix(workflowPath: string): Promise<DoctorFixReport> {
+export interface DoctorFixOptions {
+  dryRun?: boolean;
+}
+
+export async function runDoctorFix(
+  workflowPath: string,
+  options: DoctorFixOptions = {},
+): Promise<DoctorFixReport> {
+  const dryRun = options.dryRun === true;
   const actions: DoctorFixAction[] = [];
 
-  actions.push(await fixStaleProjectLock(workflowPath));
-  actions.push(await ensureWorkspaceRootExists(workflowPath));
+  actions.push(await fixStaleProjectLock(workflowPath, dryRun));
+  actions.push(await ensureWorkspaceRootExists(workflowPath, dryRun));
+  actions.push(await pruneStaleInstanceRegistryEntries(dryRun));
 
   const ok = actions.every((action) => action.ok);
   const changed = actions.filter((action) => action.changed).length;
+  const wouldChange = actions.filter((action) => action.would_change).length;
 
-  return { ok, changed, actions };
+  return {
+    ok,
+    dry_run: dryRun,
+    changed,
+    would_change: wouldChange,
+    actions,
+  };
 }
 
-async function fixStaleProjectLock(workflowPath: string): Promise<DoctorFixAction> {
+async function fixStaleProjectLock(
+  workflowPath: string,
+  dryRun: boolean,
+): Promise<DoctorFixAction> {
   const projectDir = resolve(dirname(workflowPath));
 
   try {
@@ -102,6 +127,7 @@ async function fixStaleProjectLock(workflowPath: string): Promise<DoctorFixActio
         name: "stale-project-lock",
         ok: true,
         changed: false,
+        would_change: false,
         detail: "no project lock file",
       };
     }
@@ -111,7 +137,18 @@ async function fixStaleProjectLock(workflowPath: string): Promise<DoctorFixActio
         name: "stale-project-lock",
         ok: true,
         changed: false,
+        would_change: false,
         detail: `project lock is active (PID ${lock.pid})`,
+      };
+    }
+
+    if (dryRun) {
+      return {
+        name: "stale-project-lock",
+        ok: true,
+        changed: false,
+        would_change: true,
+        detail: `would remove stale project lock for dead PID ${lock.pid}`,
       };
     }
 
@@ -120,6 +157,7 @@ async function fixStaleProjectLock(workflowPath: string): Promise<DoctorFixActio
       name: "stale-project-lock",
       ok: true,
       changed: true,
+      would_change: true,
       detail: `removed stale project lock for dead PID ${lock.pid}`,
     };
   } catch (error) {
@@ -127,12 +165,16 @@ async function fixStaleProjectLock(workflowPath: string): Promise<DoctorFixActio
       name: "stale-project-lock",
       ok: false,
       changed: false,
+      would_change: false,
       detail: String(error),
     };
   }
 }
 
-async function ensureWorkspaceRootExists(workflowPath: string): Promise<DoctorFixAction> {
+async function ensureWorkspaceRootExists(
+  workflowPath: string,
+  dryRun: boolean,
+): Promise<DoctorFixAction> {
   try {
     const file = Bun.file(workflowPath);
     if (!(await file.exists())) {
@@ -140,6 +182,7 @@ async function ensureWorkspaceRootExists(workflowPath: string): Promise<DoctorFi
         name: "workspace-root",
         ok: false,
         changed: false,
+        would_change: false,
         detail: `workflow file not found: ${workflowPath}`,
       };
     }
@@ -150,12 +193,24 @@ async function ensureWorkspaceRootExists(workflowPath: string): Promise<DoctorFi
     const workspaceRoot = resolve(workflowDir, workflow.config.workspace.root);
 
     const existed = await pathExists(workspaceRoot);
+
+    if (!existed && dryRun) {
+      return {
+        name: "workspace-root",
+        ok: true,
+        changed: false,
+        would_change: true,
+        detail: `would create: ${workspaceRoot}`,
+      };
+    }
+
     await mkdir(workspaceRoot, { recursive: true });
 
     return {
       name: "workspace-root",
       ok: true,
       changed: !existed,
+      would_change: !existed,
       detail: existed ? `already exists: ${workspaceRoot}` : `created: ${workspaceRoot}`,
     };
   } catch (error) {
@@ -163,6 +218,40 @@ async function ensureWorkspaceRootExists(workflowPath: string): Promise<DoctorFi
       name: "workspace-root",
       ok: false,
       changed: false,
+      would_change: false,
+      detail: String(error),
+    };
+  }
+}
+
+async function pruneStaleInstanceRegistryEntries(dryRun: boolean): Promise<DoctorFixAction> {
+  try {
+    const result = await pruneStaleRegistryEntries({ dryRun });
+    if (result.removed === 0) {
+      return {
+        name: "stale-instance-registry",
+        ok: true,
+        changed: false,
+        would_change: false,
+        detail: `no stale global registry entries (${result.scanned} scanned)`,
+      };
+    }
+
+    return {
+      name: "stale-instance-registry",
+      ok: true,
+      changed: !dryRun,
+      would_change: true,
+      detail: dryRun
+        ? `would remove ${result.removed} stale global registry entries`
+        : `removed ${result.removed} stale global registry entries`,
+    };
+  } catch (error) {
+    return {
+      name: "stale-instance-registry",
+      ok: false,
+      changed: false,
+      would_change: false,
       detail: String(error),
     };
   }
@@ -350,16 +439,14 @@ export async function checkWorkspaceOverlapRisk(): Promise<CheckResult> {
     };
   }
 
-  const samples = overlaps
-    .slice(0, 2)
-    .map((pair) => `${pair.left.workspace_root} ↔ ${pair.right.workspace_root}`)
-    .join("; ");
+  const samples = overlaps.slice(0, 2).map(formatOverlapPair).join("; ");
   const more = overlaps.length > 2 ? ` (+${overlaps.length - 2} more)` : "";
 
   return {
     name: "workspace-overlap",
     ok: false,
     detail: `${overlaps.length} overlapping workspace root pair(s): ${samples}${more}`,
+    hints: buildOverlapHints(overlaps),
   };
 }
 
@@ -392,4 +479,26 @@ function orderedPair(instanceA: LockInfo, instanceB: LockInfo): [LockInfo, LockI
   return instanceA.project_path < instanceB.project_path
     ? [instanceA, instanceB]
     : [instanceB, instanceA];
+}
+
+function formatOverlapPair(pair: WorkspaceOverlapPair): string {
+  const leftId = getInstanceId(pair.left.project_path);
+  const rightId = getInstanceId(pair.right.project_path);
+
+  return `${leftId}:${pair.left.workspace_root} ↔ ${rightId}:${pair.right.workspace_root}`;
+}
+
+function buildOverlapHints(overlaps: WorkspaceOverlapPair[]): string[] {
+  const instanceIds = new Set<string>();
+
+  for (const pair of overlaps) {
+    instanceIds.add(getInstanceId(pair.left.project_path));
+    instanceIds.add(getInstanceId(pair.right.project_path));
+  }
+
+  const stopHints = Array.from(instanceIds)
+    .slice(0, 2)
+    .map((id) => `stop one conflicting instance: symphony stop --id ${id}`);
+
+  return ["inspect running instances: symphony instances", ...stopHints];
 }

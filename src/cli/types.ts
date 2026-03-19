@@ -11,4 +11,5 @@ export interface Args {
   instanceId: string | null;
   strict: boolean;
   fix: boolean;
+  dryRun: boolean;
 }

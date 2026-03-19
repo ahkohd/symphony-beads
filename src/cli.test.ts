@@ -380,6 +380,13 @@ describe("parseArgs -f flag", () => {
     expect(args.command).toBe("doctor");
     expect(args.fix).toBe(true);
   });
+
+  it("--dry-run enables doctor dry-run mode", () => {
+    const args = parseArgs(["doctor", "--fix", "--dry-run"]);
+    expect(args.command).toBe("doctor");
+    expect(args.fix).toBe(true);
+    expect(args.dryRun).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -639,9 +646,33 @@ describe("CLI doctor", () => {
     expect(parsed.ok).toBe(false);
     const overlap = parsed.checks.find(
       (check: { name: string }) => check.name === "workspace-overlap",
-    );
+    ) as { ok: boolean; hints?: string[] } | undefined;
     expect(overlap).toBeDefined();
-    expect(overlap.ok).toBe(false);
+    expect(overlap?.ok).toBe(false);
+    expect(overlap?.hints).toBeDefined();
+    expect(overlap?.hints).toContain("inspect running instances: symphony instances");
+    expect((overlap?.hints ?? []).some((hint) => hint.includes("symphony stop --id"))).toBe(true);
+  });
+
+  it("doctor rejects --dry-run without --fix", async () => {
+    const binDir = await setupMockDoctorTools(tempDir);
+    const homeDir = join(tempDir, "doctor-home-dry-run-only");
+    await mkdir(homeDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli(
+      ["doctor", "--dry-run", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.error).toBe("doctor_flag_conflict");
   });
 
   it("doctor --fix removes stale project lock and reports fix actions", async () => {
@@ -680,10 +711,103 @@ describe("CLI doctor", () => {
 
     const parsed = JSON.parse(stdout.trim());
     expect(parsed.fix).toBeDefined();
+    expect(parsed.fix.dry_run).toBe(false);
     expect(parsed.fix.changed).toBeGreaterThan(0);
 
     const lockFile = Bun.file(lockPath);
     expect(await lockFile.exists()).toBe(false);
+  });
+
+  it("doctor --fix --dry-run previews fixes without applying them", async () => {
+    const binDir = await setupMockDoctorTools(tempDir);
+    const homeDir = join(tempDir, "doctor-home-fix-dry-run");
+    await mkdir(homeDir, { recursive: true });
+
+    const lockPath = join(tempDir, ".symphony.lock");
+    await writeFile(
+      lockPath,
+      JSON.stringify(
+        {
+          pid: 999999,
+          project_path: tempDir,
+          workspace_root: join(tempDir, "workspaces"),
+          workflow_file: join(tempDir, "WORKFLOW.md"),
+          started_at: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+
+    const { stdout, exitCode } = await runCli(
+      ["doctor", "--fix", "--dry-run", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.fix).toBeDefined();
+    expect(parsed.fix.dry_run).toBe(true);
+    expect(parsed.fix.changed).toBe(0);
+    expect(parsed.fix.would_change).toBeGreaterThan(0);
+
+    const lockFile = Bun.file(lockPath);
+    expect(await lockFile.exists()).toBe(true);
+  });
+
+  it("doctor --fix prunes stale global instance registry entries", async () => {
+    const binDir = await setupMockDoctorTools(tempDir);
+    const homeDir = join(tempDir, "doctor-home-fix-registry");
+    await mkdir(homeDir, { recursive: true });
+
+    await setupMockInstancesRegistry(homeDir, [
+      {
+        pid: process.pid,
+        project_path: join(tempDir, "project-live"),
+        workspace_root: "/tmp/workspaces-live",
+        workflow_file: join(tempDir, "project-live", "WORKFLOW.md"),
+        started_at: new Date().toISOString(),
+      },
+      {
+        pid: 999999,
+        project_path: join(tempDir, "project-stale"),
+        workspace_root: "/tmp/workspaces-stale",
+        workflow_file: join(tempDir, "project-stale", "WORKFLOW.md"),
+        started_at: new Date().toISOString(),
+      },
+    ]);
+
+    const stalePath = join(homeDir, ".symphony", "instances", "instance-1.json");
+
+    const { stdout, exitCode } = await runCli(
+      ["doctor", "--fix", "--json", "--workflow", join(tempDir, "WORKFLOW.md")],
+      {
+        cwd: tempDir,
+        env: {
+          HOME: homeDir,
+          PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        },
+      },
+    );
+
+    expect(exitCode).toBe(0);
+
+    const parsed = JSON.parse(stdout.trim());
+    const registryAction = parsed.fix.actions.find(
+      (action: { name: string }) => action.name === "stale-instance-registry",
+    );
+    expect(registryAction).toBeDefined();
+    expect(registryAction.changed).toBe(true);
+
+    const staleFile = Bun.file(stalePath);
+    expect(await staleFile.exists()).toBe(false);
   });
 });
 

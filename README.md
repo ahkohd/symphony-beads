@@ -75,6 +75,7 @@ Validate flags:
 
 Doctor flags:
   --fix             Apply safe automatic repairs before checks
+  --dry-run         Preview doctor fixes without applying changes (requires --fix)
 ```
 
 ### Instance IDs (deterministic) and targeted stop
@@ -116,8 +117,11 @@ symphony validate --strict
 
 - remove a stale project `.symphony.lock` (dead PID)
 - ensure the configured `workspace.root` directory exists
+- prune stale/invalid global registry files in `~/.symphony/instances`
 
 Then it runs the normal doctor checks and reports final health.
+
+Use `doctor --fix --dry-run` to preview what would change without touching files.
 
 ## How it works
 
@@ -302,7 +306,7 @@ symphony instances                   # see all running + IDs
 symphony stop --id <instance-id>    # stop one specific instance
 ```
 
-Isolation: `.symphony.lock` prevents duplicates, global registry (`~/.symphony/instances/`) detects workspace root collisions (including nested overlaps). `symphony doctor` also reports overlapping workspace roots across running instances.
+Isolation: `.symphony.lock` prevents duplicates, global registry (`~/.symphony/instances/`) detects workspace root collisions (including nested overlaps). `symphony doctor` also reports overlapping workspace roots across running instances and prints targeted `symphony stop --id ...` hints.
 
 ## WORKFLOW.md hot-reload
 

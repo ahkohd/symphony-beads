@@ -180,6 +180,52 @@ export async function listInstances(): Promise<LockInfo[]> {
   return live.sort((a, b) => (a.started_at < b.started_at ? -1 : 1));
 }
 
+export interface PruneStaleRegistryOptions {
+  dryRun?: boolean;
+}
+
+export interface PruneStaleRegistryResult {
+  scanned: number;
+  removed: number;
+}
+
+/**
+ * Remove stale or invalid files from the global instance registry.
+ * Stale = dead PID. Invalid = unreadable/invalid JSON lock file.
+ */
+export async function pruneStaleRegistryEntries(
+  options: PruneStaleRegistryOptions = {},
+): Promise<PruneStaleRegistryResult> {
+  const dir = registryDir();
+  const dryRun = options.dryRun === true;
+
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return { scanned: 0, removed: 0 };
+  }
+
+  const jsonEntries = entries.filter((entry) => entry.endsWith(".json"));
+  let removed = 0;
+
+  for (const entry of jsonEntries) {
+    const file = resolve(dir, entry);
+    const info = await readLockFile(file);
+
+    if (info && isPidAlive(info.pid)) {
+      continue;
+    }
+
+    removed += 1;
+    if (!dryRun) {
+      await rm(file, { force: true }).catch(() => {});
+    }
+  }
+
+  return { scanned: jsonEntries.length, removed };
+}
+
 // -- Helpers -----------------------------------------------------------------
 
 async function normalizeWorkspacePath(path: string): Promise<string> {
