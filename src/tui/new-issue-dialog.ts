@@ -31,7 +31,8 @@ const COLORS = {
   cyan: "#7dcfff",
 } as const;
 
-const GUIDANCE_MESSAGE = "Create issues through your agent using Beads (`bd create ...`).";
+const PANEL_DIVIDER = "\u2500".repeat(62);
+const CREATE_COMMAND = 'bd create "Issue title" -t task -p 2 -d "Describe the work"';
 
 // -- Dialog ------------------------------------------------------------------
 
@@ -82,23 +83,23 @@ export class NewIssueDialog {
           gap: 1,
         },
         Text({
-          content: " Issue creation from Kanban is disabled",
+          content: " Create ticket via Beads",
           fg: COLORS.accent,
           attributes: 1,
         }),
-        Text({ content: "\u2500".repeat(58), fg: COLORS.border }),
+        Text({ content: PANEL_DIVIDER, fg: COLORS.border }),
         Text({
-          content: "Create issues from your agent workflow instead of this TUI.",
+          content: "Ask your agent to create tickets with Beads.",
           fg: COLORS.text,
           wrapMode: "word",
         }),
-        Text({ content: GUIDANCE_MESSAGE, fg: COLORS.cyan, wrapMode: "word" }),
+        Text({ content: `  ${CREATE_COMMAND}`, fg: COLORS.cyan, wrapMode: "word" }),
         Text({
           content: "Then return to Kanban and press r to refresh.",
           fg: COLORS.textDim,
           wrapMode: "word",
         }),
-        Text({ content: "\u2500".repeat(58), fg: COLORS.border }),
+        Text({ content: PANEL_DIVIDER, fg: COLORS.border }),
         Text({ content: " Esc/Enter close", fg: COLORS.textDim }),
       ),
     );
