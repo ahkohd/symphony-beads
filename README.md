@@ -2,9 +2,9 @@
 
 Autonomous coding orchestrator for Beads issues.
 
-It polls issues, creates per-issue workspaces, runs `pi` to implement work, opens PRs, and reacts to PR review outcomes.
+It polls issues, creates per-issue workspaces, runs the configured coding runner (default: [`pi`](https://pi.dev)) to implement work, opens PRs, and reacts to PR review outcomes.
 
-Built on [Beads](https://github.com/steveyegge/beads), [pi](https://pi.dev), and [Bun](https://bun.sh). Based on the [Symphony spec](https://github.com/openai/symphony/blob/main/SPEC.md).
+Built on [Beads](https://github.com/steveyegge/beads) and [Bun](https://bun.sh), with `pi` as the default runner. Based on the [Symphony spec](https://github.com/openai/symphony/blob/main/SPEC.md).
 
 ---
 
@@ -24,8 +24,6 @@ Built on [Beads](https://github.com/steveyegge/beads), [pi](https://pi.dev), and
 - [JSON output quick reference](#json-output-quick-reference)
 - [Running multiple projects](#running-multiple-projects)
 - [Contributing and quality gates](#contributing-and-quality-gates)
-- [Architecture](#architecture)
-- [License](#license)
 
 ---
 
@@ -409,24 +407,4 @@ bun run smoke:cli
 
 CI runs these gates on push/PR.
 
----
-
-## Architecture
-
-```text
-src/
-  cli.ts            CLI entry point
-  config.ts         WORKFLOW parser + validation
-  doctor.ts         health checks + auto-fix
-  lock.ts           project lock + global registry
-  orchestrator.ts   dispatch/reconcile/retry loop
-  runner.ts         pi process runner
-  tracker.ts        beads integration
-  workspace.ts      per-issue workspace lifecycle
-  pr-monitor.ts     PR merge/rework handling
-  tui/              kanban UI
-```
-
-## License
-
-MIT
+License: see [LICENSE.md](LICENSE.md).
