@@ -119,6 +119,61 @@ describe("fetchIssueDetail", () => {
     expect(result!.pr_url).toBe("https://github.com/org/repo/pull/99");
   });
 
+  test("extracts PR URL from issue comments", async () => {
+    const issueJson = [
+      {
+        id: "test-comment-url",
+        title: "Review issue",
+        description: "No explicit PR URL",
+        status: "review",
+        comments: [{ text: "PR pushed: https://github.com/org/repo/pull/222" }],
+      },
+    ];
+
+    mockExec.mockResolvedValueOnce({
+      code: 0,
+      stdout: JSON.stringify(issueJson),
+      stderr: "",
+    });
+
+    const result = await fetchIssueDetail("test-comment-url");
+    expect(result).not.toBeNull();
+    expect(result!.pr_url).toBe("https://github.com/org/repo/pull/222");
+    expect(mockExec).toHaveBeenCalledTimes(1);
+  });
+
+  test("extracts PR number from comments and resolves via gh pr view", async () => {
+    const issueJson = [
+      {
+        id: "test-comment-pr-number",
+        title: "Review issue",
+        description: "No explicit PR URL",
+        status: "review",
+        comments: [{ text: "PR pushed (#333)." }],
+      },
+    ];
+
+    mockExec.mockResolvedValueOnce({
+      code: 0,
+      stdout: JSON.stringify(issueJson),
+      stderr: "",
+    });
+    mockExec.mockResolvedValueOnce({
+      code: 0,
+      stdout: JSON.stringify({ url: "https://github.com/org/repo/pull/333" }),
+      stderr: "",
+    });
+
+    const result = await fetchIssueDetail("test-comment-pr-number");
+    expect(result).not.toBeNull();
+    expect(result!.pr_url).toBe("https://github.com/org/repo/pull/333");
+    expect(mockExec).toHaveBeenNthCalledWith(
+      2,
+      ["gh", "pr", "view", "333", "--json", "url"],
+      expect.any(Object),
+    );
+  });
+
   test("falls back to gh pr lookup by branch for review/closed issues", async () => {
     const issueJson = [
       {

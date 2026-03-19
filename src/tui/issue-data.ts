@@ -59,6 +59,93 @@ function parsePrListUrl(raw: string): string | null {
   }
 }
 
+function parsePrViewUrl(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw) as { url?: unknown };
+    return typeof parsed.url === "string" && parsed.url.trim() ? parsed.url : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractPrNumber(text: string | null | undefined): number | null {
+  if (!text) return null;
+
+  const patterns = [
+    /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/i,
+    /\bPR\b[^\n#]*#(\d+)/i,
+    /\bPR\b[^\n]*\(#(\d+)\)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+
+    const value = Number.parseInt(match[1] ?? "", 10);
+    if (Number.isFinite(value) && value > 0) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function extractPrUrlFromComments(comments: unknown): string | null {
+  if (!Array.isArray(comments)) return null;
+
+  for (const raw of comments) {
+    if (!raw || typeof raw !== "object") continue;
+
+    const candidate = raw as {
+      text?: unknown;
+      body?: unknown;
+      content?: unknown;
+    };
+
+    const texts = [candidate.text, candidate.body, candidate.content];
+    for (const text of texts) {
+      if (typeof text !== "string") continue;
+      const url = extractPrUrl(text);
+      if (url) return url;
+    }
+  }
+
+  return null;
+}
+
+function extractPrNumberFromComments(comments: unknown): number | null {
+  if (!Array.isArray(comments)) return null;
+
+  for (const raw of comments) {
+    if (!raw || typeof raw !== "object") continue;
+
+    const candidate = raw as {
+      text?: unknown;
+      body?: unknown;
+      content?: unknown;
+    };
+
+    const texts = [candidate.text, candidate.body, candidate.content];
+    for (const text of texts) {
+      if (typeof text !== "string") continue;
+      const number = extractPrNumber(text);
+      if (number) return number;
+    }
+  }
+
+  return null;
+}
+
+async function lookupPrUrlByNumber(prNumber: number): Promise<string | null> {
+  const prView = await exec(["gh", "pr", "view", String(prNumber), "--json", "url"], {
+    cwd: process.cwd(),
+    timeout: 10000,
+  });
+
+  if (prView.code !== 0 || !prView.stdout.trim()) return null;
+  return parsePrViewUrl(prView.stdout);
+}
+
 async function lookupPrUrlViaGitHub(issueId: string): Promise<string | null> {
   const byHead = await exec(
     [
@@ -142,8 +229,18 @@ export async function fetchIssueDetail(issueId: string): Promise<IssueDetail | n
       prUrl = extractPrUrl(typeof issue.description === "string" ? issue.description : null);
     }
 
-    // Most local bead issues only contain "PR pushed (#123)" in comments.
-    // For review/closed issues, query GitHub by branch/title as fallback.
+    if (!prUrl) {
+      prUrl = extractPrUrlFromComments((issue as { comments?: unknown }).comments);
+    }
+
+    if (!prUrl) {
+      const prNumber = extractPrNumberFromComments((issue as { comments?: unknown }).comments);
+      if (prNumber) {
+        prUrl = await lookupPrUrlByNumber(prNumber);
+      }
+    }
+
+    // For review/closed issues, query GitHub by branch/title as final fallback.
     if (!prUrl && (status === "review" || status === "closed")) {
       prUrl = await lookupPrUrlViaGitHub(resolvedIssueId);
     }
