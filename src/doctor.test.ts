@@ -46,7 +46,7 @@ describe("checkWorkspaceOverlapRisk", () => {
 
     expect(result.ok).toBe(true);
     expect(result.name).toBe("workspace-overlap");
-    expect(result.detail).toContain("no overlap risk");
+    expect(result.detail).toContain("not enough running instances");
   });
 
   it("returns ok when workspace roots do not overlap", async () => {

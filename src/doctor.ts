@@ -336,7 +336,7 @@ export async function checkWorkspaceOverlapRisk(): Promise<CheckResult> {
     return {
       name: "workspace-overlap",
       ok: true,
-      detail: "no overlap risk (<2 running instances)",
+      detail: `not enough running instances to compare workspace roots (need 2+, found ${instances.length})`,
     };
   }
 
