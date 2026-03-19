@@ -314,8 +314,10 @@ export class IssueDetailOverlay {
         ),
         Box(
           {
-            paddingLeft: 1,
+            backgroundColor: COLORS.surface,
+            paddingLeft: 2,
             paddingRight: 2,
+            paddingBottom: 1,
           },
           Text({ content: footerText, fg: COLORS.textDim, wrapMode: "none" }),
         ),
