@@ -15,9 +15,11 @@ Built on [Beads](https://github.com/steveyegge/beads) and [Bun](https://bun.sh),
 - [Quick start (5 minutes)](#quick-start-5-minutes)
 - [First-run checklist](#first-run-checklist)
 - [Daily operator workflow](#daily-operator-workflow)
+- [Creating tickets (human or agent)](#creating-tickets-human-or-agent)
 - [CLI reference](#cli-reference)
 - [Runtime isolation and instance IDs](#runtime-isolation-and-instance-ids)
 - [WORKFLOW.md configuration](#workflowmd-configuration)
+- [Model routing and per-ticket model selection](#model-routing-and-per-ticket-model-selection)
 - [Issue lifecycle and backlog](#issue-lifecycle-and-backlog)
 - [Validate and doctor](#validate-and-doctor)
 - [Troubleshooting](#troubleshooting)
@@ -32,7 +34,8 @@ Built on [Beads](https://github.com/steveyegge/beads) and [Bun](https://bun.sh),
 - [Bun](https://bun.sh) >= 1.0
 - [Beads](https://github.com/steveyegge/beads) (`bd` CLI)
 - [Dolt](https://docs.dolthub.com/introduction/installation) (required by Beads)
-- [pi (optional)](https://www.npmjs.com/package/@mariozechner/pi-coding-agent)
+- [pi](https://www.npmjs.com/package/@mariozechner/pi-coding-agent) (default runner used by `symphony init`)
+- A coding runner available in PATH for your configured `runner.command` (you can replace `pi`)
 - [gh](https://cli.github.com/) (for PR creation/monitoring)
 - [git](https://git-scm.com/)
 
@@ -101,6 +104,28 @@ symphony stop --id <instance-id-or-unique-prefix>
 # Stop all
 symphony stop --all
 ```
+
+---
+
+## Creating tickets (human or agent)
+
+You can create and update Beads tickets yourself, or ask your coding agent to run the same `bd` commands.
+
+Examples:
+
+```bash
+# Human or agent: create a new issue
+bd create "Fix flaky CI test suite" -t bug -p 1 -d "Intermittent failure in parser tests"
+
+# Human or agent: assign a specific model override when creating
+bd create "Migrate auth flow" -t feature -p 1 --metadata '{"model":"claude-opus-4-6"}'
+
+# Existing issue: set or clear model override
+bd update bd-42 --set-metadata model=claude-opus-4-6
+bd update bd-42 --unset-metadata model
+```
+
+When model metadata is present, Symphony uses it as the highest-priority model routing signal (see model routing section below).
 
 ---
 
@@ -254,6 +279,42 @@ log:
 | `{{ issue.state }}` | Current state |
 | `{{ attempt }}` | Retry attempt |
 | `{{ review_feedback }}` | PR review feedback on rework |
+
+---
+
+## Model routing and per-ticket model selection
+
+Symphony supports per-ticket model routing.
+
+Resolution order (highest first):
+
+1. `issue.metadata.model`
+2. `runner.models.<issue_type>` (for example `bug`, `feature`, `chore`)
+3. `runner.models.P0..P4`
+4. `runner.models.default`
+
+To enable dynamic model selection, ensure your runner command consumes `$SYMPHONY_MODEL`:
+
+```yaml
+runner:
+  command: pi --no-session --model $SYMPHONY_MODEL
+  models:
+    default: claude-sonnet-4-5-20250929
+    P0: claude-opus-4-6
+    bug: claude-opus-4-6
+    chore: claude-haiku-4-5-20251001
+```
+
+Notes:
+
+- For non-`pi` runners, use an equivalent command that accepts a model argument (still via `$SYMPHONY_MODEL`).
+- Legacy fixed model is still supported via `runner.model` when `runner.models` is not set.
+
+You can set per-issue model override directly in Beads:
+
+```bash
+bd update bd-42 --set-metadata model=claude-opus-4-6
+```
 
 ---
 
