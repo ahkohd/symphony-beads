@@ -24,8 +24,12 @@ export async function runValidateCommand(args: Args): Promise<void> {
     );
   }
 
+  const strictWarningFailure = args.strict && warnings.length > 0;
+  const valid = errors.length === 0 && !strictWarningFailure;
+
   const output = {
-    valid: errors.length === 0,
+    valid,
+    strict: args.strict,
     errors,
     warnings,
     config: workflow.config,
@@ -34,11 +38,14 @@ export async function runValidateCommand(args: Args): Promise<void> {
 
   if (args.json) {
     printJson(output, true);
+    if (!valid) {
+      process.exit(1);
+    }
     return;
   }
 
-  if (errors.length === 0) {
-    log.info("workflow is valid", { file: workflowPath });
+  if (valid) {
+    log.info("workflow is valid", { file: workflowPath, strict: args.strict });
     console.log(`  tracker:        ${workflow.config.tracker.kind}`);
     console.log(`  project:        ${workflow.config.tracker.project_path}`);
     console.log(`  runner:         ${workflow.config.runner.command}`);
@@ -52,10 +59,16 @@ export async function runValidateCommand(args: Args): Promise<void> {
     return;
   }
 
-  log.error("workflow has errors", { file: workflowPath });
-  for (const error of errors) {
-    console.log(`  - ${error}`);
+  if (errors.length > 0) {
+    log.error("workflow has errors", { file: workflowPath });
+    for (const error of errors) {
+      console.log(`  - ${error}`);
+    }
+  } else {
+    log.error("workflow has warnings (strict mode)", { file: workflowPath });
+    console.log("  strict mode enabled: warnings are treated as errors");
   }
+
   for (const warning of warnings) {
     log.warn(warning);
   }

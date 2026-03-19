@@ -41,6 +41,7 @@ export function parseArgs(argv: string[]): Args {
     lines: 50,
     all: false,
     instanceId: null,
+    strict: false,
   };
 
   const positional: string[] = [];
@@ -87,6 +88,9 @@ export function parseArgs(argv: string[]): Args {
         args.instanceId = value;
         break;
       }
+      case "--strict":
+        args.strict = true;
+        break;
       case "-h":
       case "--help":
         help = true;
@@ -167,7 +171,10 @@ Logs flags:
 
 Stop flags:
   --all            Stop all registered symphony instances
-  --id ID          Stop a specific running instance by ID (see: symphony instances)`);
+  --id ID          Stop a specific running instance by ID (see: symphony instances)
+
+Validate flags:
+  --strict         Treat warnings as errors (non-zero exit)`);
 }
 
 function printVersion(json: boolean): void {

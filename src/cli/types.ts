@@ -9,4 +9,5 @@ export interface Args {
   lines: number;
   all: boolean;
   instanceId: string | null;
+  strict: boolean;
 }

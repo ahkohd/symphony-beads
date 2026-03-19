@@ -69,6 +69,9 @@ Logs flags:
 Stop flags:
   --all             Stop all registered symphony instances
   --id ID           Stop a specific instance by ID or unique ID prefix
+
+Validate flags:
+  --strict          Treat warnings as errors (non-zero exit)
 ```
 
 ### Instance IDs (deterministic) and targeted stop
@@ -93,6 +96,15 @@ Prefix matching rules for `stop --id`:
 - otherwise, a unique prefix is accepted
 - if a prefix matches multiple instances, command fails with `instance_id_ambiguous`
 - in text mode, ambiguous errors also print top matching IDs to help you pick a longer prefix
+
+### Validate warnings and strict mode
+
+`validate` reports unknown `WORKFLOW.md` sections/keys as warnings to catch typos.
+Use strict mode when you want warnings to fail CI:
+
+```bash
+symphony validate --strict
+```
 
 ## How it works
 

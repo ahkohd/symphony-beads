@@ -286,6 +286,12 @@ describe("parseArgs -f flag", () => {
     expect(args.instanceId).toBe("abc123");
     expect(args.all).toBe(false);
   });
+
+  it("--strict enables strict validation mode", () => {
+    const args = parseArgs(["validate", "--strict"]);
+    expect(args.command).toBe("validate");
+    expect(args.strict).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -346,9 +352,48 @@ Prompt.
     expect(exitCode).toBe(0);
     const parsed = JSON.parse(stdout.trim());
     expect(parsed.valid).toBe(true);
+    expect(parsed.strict).toBe(false);
     expect(parsed.errors).toEqual([]);
     expect(parsed.warnings).toContain("unknown config key: runner.commnd");
     expect(parsed.warnings).toContain("unknown config section: observability");
+  });
+
+  it("validate --strict --json fails when warnings exist", async () => {
+    const workflowPath = join(tempDir, "WORKFLOW-strict-warning.md");
+    const withUnknownKeys = `---
+tracker:
+  kind: beads
+  project_path: "."
+workspace:
+  root: ./workspaces
+agent:
+  max_concurrent: 1
+runner:
+  command: echo noop
+  commnd: echo typo
+polling:
+  interval_ms: 30000
+log:
+  file: ./test-symphony.log
+---
+Prompt.
+`;
+
+    await writeFile(workflowPath, withUnknownKeys);
+
+    const { stdout, exitCode } = await runCli(
+      ["validate", "--strict", "--json", "--workflow", workflowPath],
+      {
+        cwd: tempDir,
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.valid).toBe(false);
+    expect(parsed.strict).toBe(true);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.warnings).toContain("unknown config key: runner.commnd");
   });
 
   it("validate fails for missing workflow file", async () => {
