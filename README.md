@@ -1,16 +1,41 @@
 # symphony-beads
 
-Autonomous coding orchestrator. Creates issues, dispatches AI agents, opens PRs, handles review feedback — all from the terminal.
+Autonomous coding orchestrator for Beads issues.
 
-Built on [Beads](https://github.com/steveyegge/beads) (issue tracker), [pi](https://pi.dev) (coding agent), and [Bun](https://bun.sh) (runtime). Based on the [Symphony spec](https://github.com/openai/symphony/blob/main/SPEC.md) by OpenAI.
+It polls issues, creates per-issue workspaces, runs `pi` to implement work, opens PRs, and reacts to PR review outcomes.
+
+Built on [Beads](https://github.com/steveyegge/beads), [pi](https://pi.dev), and [Bun](https://bun.sh). Based on the [Symphony spec](https://github.com/openai/symphony/blob/main/SPEC.md).
+
+---
+
+## Table of contents
+
+- [Requirements](#requirements)
+- [Install](#install)
+- [Quick start (5 minutes)](#quick-start-5-minutes)
+- [First-run checklist](#first-run-checklist)
+- [Daily operator workflow](#daily-operator-workflow)
+- [CLI reference](#cli-reference)
+- [Runtime isolation and instance IDs](#runtime-isolation-and-instance-ids)
+- [WORKFLOW.md configuration](#workflowmd-configuration)
+- [Issue lifecycle and backlog](#issue-lifecycle-and-backlog)
+- [Validate and doctor](#validate-and-doctor)
+- [Troubleshooting](#troubleshooting)
+- [JSON output quick reference](#json-output-quick-reference)
+- [Running multiple projects](#running-multiple-projects)
+- [Contributing and quality gates](#contributing-and-quality-gates)
+- [Architecture](#architecture)
+- [License](#license)
+
+---
 
 ## Requirements
 
 - [Bun](https://bun.sh) >= 1.0
 - [Beads](https://github.com/steveyegge/beads) (`bd` CLI)
 - [Dolt](https://docs.dolthub.com/introduction/installation) (required by Beads)
-- [pi](https://www.npmjs.com/package/@mariozechner/pi-coding-agent) coding agent
-- [gh](https://cli.github.com/) GitHub CLI (for PR creation)
+- [pi](https://www.npmjs.com/package/@mariozechner/pi-coding-agent)
+- [gh](https://cli.github.com/) (for PR creation/monitoring)
 - [git](https://git-scm.com/)
 
 ## Install
@@ -19,26 +44,71 @@ Built on [Beads](https://github.com/steveyegge/beads) (issue tracker), [pi](http
 git clone https://github.com/ahkohd/symphony-beads.git
 cd symphony-beads
 bun install
-bun link    # makes 'symphony' available globally
+bun link    # installs the `symphony` command globally
 ```
 
-## Quick start
+---
+
+## Quick start (5 minutes)
 
 ```bash
 cd your-project
-bd init --quiet                # initialize beads
-symphony init                  # create WORKFLOW.md
-# edit WORKFLOW.md — set your repo URL, model, etc.
+bd init --quiet
+
+# Option A: export full clone URL
+export REPO_URL="https://github.com/owner/repo.git"
+
+# Option B: set workspace.repo in WORKFLOW.md (owner/repo)
+
+symphony init
+symphony validate --strict
+symphony doctor
 
 bd create "Implement feature X" -p 1 -t feature
-symphony start                 # start the orchestrator
-symphony status                # see what's happening
-symphony logs -f               # watch the logs
+symphony start
+symphony status
+symphony logs -f
 ```
 
-## CLI
+---
 
+## First-run checklist
+
+Before first `start`, confirm:
+
+1. **Clone source is configured**
+   - `REPO_URL` env var, or
+   - `workspace.repo` in `WORKFLOW.md`.
+2. `gh auth status` succeeds.
+3. `workspace.root` is unique for this project (not overlapping another running instance root).
+4. `symphony validate --strict` passes.
+5. `symphony doctor` is healthy.
+
+---
+
+## Daily operator workflow
+
+```bash
+# Start (daemon by default)
+symphony start
+
+# Observe
+symphony status
+symphony instances
+symphony logs -f
+
+# Stop one instance
+symphony stop --id <instance-id-or-unique-prefix>
+
+# Stop all
+symphony stop --all
 ```
+
+---
+
+## CLI reference
+
+```text
 symphony <command> [flags]
 
 Commands:
@@ -60,10 +130,10 @@ Flags:
   -v, --version     Show version
 
 Start flags:
-  -f, --foreground  Run in foreground (don't daemonize)
+  -f, --foreground  Run in foreground
 
 Logs flags:
-  -f, --follow      Follow the log file (like tail -f)
+  -f, --follow      Follow the log file
   -n, --lines N     Number of lines to show (default: 50)
 
 Stop flags:
@@ -71,144 +141,49 @@ Stop flags:
   --id ID           Stop a specific instance by ID or unique ID prefix
 
 Validate flags:
-  --strict          Treat warnings as errors (non-zero exit)
+  --strict          Treat warnings as errors
 
 Doctor flags:
   --fix             Apply safe automatic repairs before checks
-  --dry-run         Preview doctor fixes without applying changes (requires --fix)
+  --dry-run         Preview fixes without applying changes (requires --fix)
 ```
 
-### Instance IDs (deterministic) and targeted stop
+---
 
-Each running instance gets a deterministic ID derived from the absolute project path.
+## Runtime isolation and instance IDs
 
-- `symphony start --json` includes top-level `instance_id`
-- `symphony status --json` includes `service.instance_id`
-- `symphony instances --json` includes `instances[].id`
+### Isolation model
 
-Example flow:
+- **Per project:** `.symphony.lock` prevents duplicate local starts.
+- **Global:** `~/.symphony/instances/` tracks live instances.
+- **Workspace collision guard:** overlapping roots are blocked (exact match and parent/child overlap).
 
-```bash
-symphony instances
-# ... copy ID (or a unique prefix) ...
-symphony stop --id 1234567890
-```
+Example overlap (invalid):
 
-Prefix matching rules for `stop --id`:
+- Instance A: `/tmp/symphony`
+- Instance B: `/tmp/symphony/project-b`
+
+### Deterministic instance IDs
+
+Instance IDs are deterministic from absolute project path.
+
+- `start --json` → top-level `instance_id`
+- `status --json` → `service.instance_id`
+- `instances --json` → `instances[].id`
+
+Prefix behavior for `stop --id`:
 
 - exact ID match wins
-- otherwise, a unique prefix is accepted
-- if a prefix matches multiple instances, command fails with `instance_id_ambiguous`
-- in text mode, ambiguous errors also print top matching IDs to help you pick a longer prefix
+- otherwise unique prefix works
+- ambiguous prefix fails with `instance_id_ambiguous`
 
-### Validate warnings and strict mode
+---
 
-`validate` reports unknown `WORKFLOW.md` sections/keys as warnings to catch typos.
-It also warns when clone bootstrap hooks appear to have no repository source (`workspace.repo` and `REPO_URL` both missing).
-Use strict mode when you want warnings to fail CI:
+## WORKFLOW.md configuration
 
-```bash
-symphony validate --strict
-```
+`WORKFLOW.md` has YAML front-matter + prompt body.
 
-### Doctor auto-fix mode
-
-`doctor --fix` runs safe, non-destructive repairs before checks:
-
-- remove a stale project `.symphony.lock` (dead PID)
-- ensure the configured `workspace.root` directory exists
-- prune stale/invalid global registry files in `~/.symphony/instances`
-
-Then it runs the normal doctor checks and reports final health.
-
-Use `doctor --fix --dry-run` to preview what would change without touching files.
-
-## How it works
-
-```
-bd create issue → symphony dispatches → pi implements → git push
-                                                         ↓
-            auto-close ← PR monitor ← you merge ← gh pr create
-                  OR
-            reopen ← changes requested → agent gets feedback → fixes
-```
-
-1. Polls Beads for issues in active states (`open`, `in_progress`)
-2. Creates isolated workspace per issue (git clone + branch)
-3. Renders prompt template with issue details
-4. Spawns pi agent to implement the solution
-5. Agent commits, pushes, creates PR via `gh`, moves issue to `review`
-6. PR monitor watches GitHub — auto-closes on merge, reopens on changes requested
-7. On rework: fetches review comments and injects into prompt
-8. On failure: retries with exponential backoff
-
-## Issue lifecycle
-
-```
-             ┌──────────────────────────────────────────┐
-             │            human requests rework          │
-             ▼                                           │
-  ┌────────┐  dispatch  ┌─────────────┐  PR created  ┌────────┐
-  │  open  │ ─────────► │ in_progress │ ───────────► │ review │
-  └────────┘            └─────────────┘              └────────┘
-     │  ▲                     │                         │
-     │  │                     │                   PR merged
-     ▼  │                     ▼                         │
- ┌──────────┐           ┌──────────┐                    │
- │ deferred │           │  closed  │ ◄──────────────────┘
- │ (backlog)│           └──────────┘
- └──────────┘
-```
-
-| State | Orchestrator behavior |
-|-------|-----------------------|
-| `open`, `in_progress` | Agent dispatched / kept running |
-| `review`, `blocked` | Agent stopped, workspace preserved |
-| `deferred` | Not dispatched — parked in backlog |
-| `closed`, `cancelled` | Agent stopped, workspace removed |
-
-## Backlog workflow
-
-Issues can be deferred to a backlog so the orchestrator skips them until you're ready.
-
-### Creating backlog items
-
-```bash
-bd create "Nice-to-have refactor" -s deferred -p 3   # starts in backlog
-```
-
-### Moving issues to/from backlog
-
-```bash
-bd update bd-42 -s deferred   # send an open issue to backlog
-bd update bd-42 -s open       # promote from backlog back to active
-```
-
-Deferred issues are **not dispatched** by the orchestrator — they stay parked until explicitly promoted.
-
-### Time-based deferral
-
-You can defer an issue for a specific duration using `--defer`:
-
-```bash
-bd update bd-42 --defer '+1w'   # defer for 1 week
-bd update bd-42 --defer '+3d'   # defer for 3 days
-```
-
-When the deferral period expires, the issue automatically becomes eligible for dispatch again.
-
-### TUI kanban board
-
-The terminal dashboard (`symphony kanban`) shows a **Backlog** column for deferred issues. Keyboard shortcuts:
-
-| Key | Action |
-|-----|--------|
-| `b` | Send the selected issue to backlog (set `deferred`) |
-| `B` | Promote the selected issue from backlog (set `open`) |
-
-## Configuration
-
-`WORKFLOW.md` with YAML front-matter:
+### Front-matter example (aligned with `symphony init` defaults)
 
 ```yaml
 ---
@@ -217,12 +192,13 @@ tracker:
   project_path: "."
 workspace:
   root: ./workspaces
+  repo: $SYMPHONY_REPO
+  remote: origin
 agent:
   max_concurrent: 5
   max_turns: 20
 runner:
-  command: pi -p --no-session
-  model: claude-sonnet-4-5-20250929   # optional, appended as --model
+  command: pi --no-session
   turn_timeout_ms: 3600000
   stall_timeout_ms: 300000
 polling:
@@ -242,100 +218,213 @@ hooks:
       echo "No repository source configured. Set REPO_URL or workspace.repo." >&2
       exit 1
     fi
-    echo "node_modules" >> .gitignore
-    bun install
+    bun install 2>/dev/null || npm install 2>/dev/null || true
   before_run: |
-    DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed "s|refs/remotes/origin/||" || echo "master")
-    git fetch origin $DEFAULT_BRANCH 2>/dev/null || true
-    git fetch origin issue/$SYMPHONY_ISSUE_ID 2>/dev/null || true
-    if git rev-parse --verify origin/issue/$SYMPHONY_ISSUE_ID >/dev/null 2>&1; then
-      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/issue/$SYMPHONY_ISSUE_ID
+    DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/$SYMPHONY_REMOTE/HEAD 2>/dev/null | sed "s|refs/remotes/$SYMPHONY_REMOTE/||" || echo "master")
+    git fetch $SYMPHONY_REMOTE $DEFAULT_BRANCH 2>/dev/null || true
+    git fetch $SYMPHONY_REMOTE issue/$SYMPHONY_ISSUE_ID 2>/dev/null || true
+    if git rev-parse --verify $SYMPHONY_REMOTE/issue/$SYMPHONY_ISSUE_ID >/dev/null 2>&1; then
+      git checkout -B issue/$SYMPHONY_ISSUE_ID $SYMPHONY_REMOTE/issue/$SYMPHONY_ISSUE_ID
     else
-      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/$DEFAULT_BRANCH
+      git checkout -B issue/$SYMPHONY_ISSUE_ID $SYMPHONY_REMOTE/$DEFAULT_BRANCH
     fi
+    git clean -fd 2>/dev/null || true
 log:
   file: ./symphony.log
 ---
-
-Prompt template with Mustache syntax...
 ```
 
 ### Hook environment variables
 
 | Variable | Description |
-|----------|-------------|
+|---|---|
 | `SYMPHONY_ISSUE_ID` | Current issue identifier |
-| `SYMPHONY_PROJECT_PATH` | Absolute path to the project root |
-| `SYMPHONY_REMOTE` | Git remote name from `workspace.remote` |
-| `SYMPHONY_REPO` | Repository slug from `workspace.repo` (e.g. `owner/repo`) |
-| `REPO_URL` | Optional full clone URL set by you in your environment |
-
-The default `after_create` hook fails fast if neither `REPO_URL` nor `workspace.repo`/`SYMPHONY_REPO` is available, so misconfiguration is surfaced early instead of creating an empty workspace.
+| `SYMPHONY_PROJECT_PATH` | Absolute project path |
+| `SYMPHONY_REMOTE` | `workspace.remote` value |
+| `SYMPHONY_REPO` | `workspace.repo` value (`owner/repo`) |
+| `REPO_URL` | Optional full clone URL |
 
 ### Prompt template variables
 
 | Variable | Description |
-|----------|-------------|
-| `{{ issue.identifier }}` | Issue ID (e.g., `my-project-abc`) |
-| `{{ issue.title }}` | Issue title |
-| `{{ issue.description }}` | Issue description |
-| `{{ issue.priority }}` | Priority (0-4) |
+|---|---|
+| `{{ issue.identifier }}` | Issue ID |
+| `{{ issue.title }}` | Title |
+| `{{ issue.description }}` | Description |
+| `{{ issue.priority }}` | Priority |
 | `{{ issue.labels }}` | Comma-separated labels |
 | `{{ issue.state }}` | Current state |
-| `{{ attempt }}` | Retry attempt number |
-| `{{ review_feedback }}` | PR review comments (on rework) |
+| `{{ attempt }}` | Retry attempt |
+| `{{ review_feedback }}` | PR review feedback on rework |
 
-Sections: `{{#review_feedback}}...{{/review_feedback}}` renders only when feedback exists.
+---
 
-## PR monitor
+## Issue lifecycle and backlog
 
-The orchestrator monitors GitHub PRs created by agents:
+```text
+open/in_progress -> review -> closed
+          ^          |
+          |          | changes requested
+          +----------+
 
-- **PR merged** → issue auto-closed via `bd update -s closed`
-- **Changes requested** → issue reopened via `bd update -s open`, agent re-dispatched with review feedback injected into prompt
+open <-> deferred (backlog)
+```
+
+| State | Orchestrator behavior |
+|---|---|
+| `open`, `in_progress` | dispatch / keep running |
+| `review`, `blocked`, `deferred` | do not dispatch; running agent is stopped |
+| `closed`, `cancelled`, `duplicate` | terminal; workspace cleaned |
+
+Backlog helpers:
+
+```bash
+bd update bd-42 -s deferred   # park in backlog
+bd update bd-42 -s open       # promote back to active
+```
+
+Kanban backlog shortcuts:
+
+- `b` → move selected issue to backlog (`deferred`)
+- `B` → promote selected issue from backlog (`open`)
+
+---
+
+## Validate and doctor
+
+### `symphony validate`
+
+- validates known config semantics
+- warns on unknown sections/keys (typo detection)
+- warns when clone bootstrap likely has no source (`workspace.repo` and `REPO_URL` missing)
+- `--strict` turns warnings into non-zero exit (CI mode)
+
+### `symphony doctor`
+
+Checks dependencies + runtime health, including workspace overlap risk.
+
+When overlap is detected, doctor includes actionable hints such as:
+
+- `symphony instances`
+- `symphony stop --id <instance-id>`
+
+### `symphony doctor --fix`
+
+Safe repairs before checks:
+
+- remove stale project lock
+- ensure workspace root exists
+- prune stale/invalid global registry entries
+
+Use preview mode first:
+
+```bash
+symphony doctor --fix --dry-run
+```
+
+---
+
+## Troubleshooting
+
+### `No repository source configured. Set REPO_URL or workspace.repo.`
+
+Configure one of:
+
+- `export REPO_URL=...`
+- `workspace.repo: owner/repo`
+
+Then run:
+
+```bash
+symphony validate --strict
+```
+
+### Workspace overlap failure
+
+Run:
+
+```bash
+symphony instances
+symphony stop --id <conflicting-id>
+```
+
+Then set distinct `workspace.root` paths per project.
+
+### `gh` auth failures
+
+```bash
+gh auth login
+symphony doctor
+```
+
+### Beads DB missing
+
+```bash
+bd init
+symphony doctor
+```
+
+### Logs JSON + follow conflict
+
+`logs --json` and `logs --follow` are mutually exclusive.
+
+---
+
+## JSON output quick reference
+
+- `start --json` → includes `instance_id`, `pid`, `log_file`
+- `status --json` → includes `service`, `issues`, `by_state`
+- `instances --json` → includes `instances[]` with `id`, `pid`, `workspace_root`
+- `stop --json` → structured stop result; errors include typed codes (`instance_not_found`, `instance_id_ambiguous`, `stop_flag_conflict`)
+- `validate --json` → `valid`, `errors`, `warnings`, `strict`
+- `doctor --json` → `checks[]` (+ `fix` section when using `--fix`)
+
+---
 
 ## Running multiple projects
-
-Each project gets its own `WORKFLOW.md`, lock file, and log. No conflicts:
 
 ```bash
 cd ~/projects/project-a && symphony start
 cd ~/projects/project-b && symphony start
 
-symphony instances                   # see all running + IDs
-symphony stop --id <instance-id>    # stop one specific instance
+symphony instances
+symphony stop --id <instance-id>
 ```
 
-Isolation: `.symphony.lock` prevents duplicates, global registry (`~/.symphony/instances/`) detects workspace root collisions (including nested overlaps). `symphony doctor` also reports overlapping workspace roots across running instances and prints targeted `symphony stop --id ...` hints.
+Use non-overlapping `workspace.root` values across projects.
 
-## WORKFLOW.md hot-reload
+---
 
-Edit `WORKFLOW.md` while the orchestrator is running — changes are detected and applied without restart. Affects future dispatches, not in-flight agents.
+## Contributing and quality gates
+
+Before commit:
+
+```bash
+bun run fmt:check
+bun run lint
+bun run typecheck
+bun run test
+bun run smoke:cli
+```
+
+CI runs these gates on push/PR.
+
+---
 
 ## Architecture
 
-```
+```text
 src/
-  cli.ts            CLI entry point and subcommands
-  config.ts         WORKFLOW.md parser and validation
-  doctor.ts         Dependency and config health checks
-  exec.ts           Subprocess helper
-  lock.ts           PID lock files + instance registry
-  log.ts            Structured logging (text/JSON/file)
-  orchestrator.ts   Poll / dispatch / reconcile / retry loop
-  pr-monitor.ts     GitHub PR watcher (merge/changes requested)
-  runner.ts         Pi agent spawning + stdout capture
-  template.ts       Mustache-compatible prompt renderer
-  tracker.ts        Beads (bd) CLI integration
-  types.ts          TypeScript types
-  watcher.ts        WORKFLOW.md file change detection
-  workspace.ts      Per-issue workspace management
-  tui/
-    app.tsx                Kanban TUI entry point
-    index.ts               TUI module exports
-    issue-data.ts          Beads data access for TUI
-    issue-detail-overlay.ts Issue detail panel
-    new-issue-dialog.ts    New issue dialog
+  cli.ts            CLI entry point
+  config.ts         WORKFLOW parser + validation
+  doctor.ts         health checks + auto-fix
+  lock.ts           project lock + global registry
+  orchestrator.ts   dispatch/reconcile/retry loop
+  runner.ts         pi process runner
+  tracker.ts        beads integration
+  workspace.ts      per-issue workspace lifecycle
+  pr-monitor.ts     PR merge/rework handling
+  tui/              kanban UI
 ```
 
 ## License
