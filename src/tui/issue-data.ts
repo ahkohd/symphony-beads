@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { exec } from "../exec.ts";
-import { resolvePrUrl } from "./pr-link-resolver.ts";
+import { resolvePrLink } from "./pr-link-resolver.ts";
 
 /** Full issue detail from `bd show <id> --json`. */
 export interface IssueDetail {
@@ -57,7 +57,7 @@ export async function fetchIssueDetail(issueId: string): Promise<IssueDetail | n
       typeof issue.id === "string" && issue.id.trim() ? issue.id.trim() : issueId;
     const status = typeof issue.status === "string" ? issue.status : "unknown";
 
-    const prUrl = await resolvePrUrl({
+    const prResolution = await resolvePrLink({
       issueId: resolvedIssueId,
       status,
       explicitPrUrl: issue.pr_url,
@@ -77,7 +77,7 @@ export async function fetchIssueDetail(issueId: string): Promise<IssueDetail | n
       created_by: issue.created_by ?? null,
       updated_at: issue.updated_at ?? null,
       dependencies: Array.isArray(issue.dependencies) ? issue.dependencies : [],
-      pr_url: prUrl,
+      pr_url: prResolution.url,
     };
   } catch {
     return null;

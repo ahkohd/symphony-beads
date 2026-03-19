@@ -27,6 +27,7 @@ import {
   type IssueComment,
   type IssueDetail,
 } from "./issue-data.ts";
+import { canOpenPr } from "./pr-link-resolver.ts";
 
 // -- Colors ------------------------------------------------------------------
 
@@ -68,10 +69,6 @@ const STATUS_COLORS: Record<string, string> = {
   closed: COLORS.textDim,
   done: COLORS.textDim,
 };
-
-function canOpenPr(status: string): boolean {
-  return status === "review" || status === "closed";
-}
 
 // -- Types for VNode children ------------------------------------------------
 type VChild = ReturnType<typeof Box> | ReturnType<typeof Text> | null;

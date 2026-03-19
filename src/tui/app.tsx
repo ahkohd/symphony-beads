@@ -19,6 +19,7 @@ import { copyTextToClipboard, openExternalUrl } from "./external-actions.ts";
 import { fetchIssueDetail } from "./issue-data.ts";
 import { IssueDetailOverlay } from "./issue-detail-overlay.ts";
 import { NewIssueDialog } from "./new-issue-dialog.ts";
+import { canOpenPr } from "./pr-link-resolver.ts";
 
 // -- Types -------------------------------------------------------------------
 
@@ -127,10 +128,6 @@ async function closeIssue(issueId: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function canOpenPr(status: string): boolean {
-  return status === "review" || status === "closed";
 }
 
 // -- Helpers -----------------------------------------------------------------
