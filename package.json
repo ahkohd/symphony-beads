@@ -8,13 +8,13 @@
   },
   "scripts": {
     "start": "bun run src/cli.ts start",
-    "test": "bun test",
+    "test": "SYMPHONY_SILENT_LOGS=1 bun test",
     "lint": "bunx @biomejs/biome check src/",
     "lint:fix": "bunx @biomejs/biome check --fix src/",
     "fmt": "bunx @biomejs/biome format --write src/",
     "fmt:check": "bunx @biomejs/biome format src/",
     "typecheck": "bun x tsc --noEmit",
-    "check": "bun run lint && bun run typecheck && bun test"
+    "check": "bun run lint && bun run typecheck && bun run test"
   },
   "dependencies": {
     "@opentui/core": "^0.1.88",

@@ -17,7 +17,19 @@ polling:
   interval_ms: 30000
 hooks:
   after_create: |
-    git clone $REPO_URL . 2>/dev/null || true
+    set -e
+    if [ -n "$REPO_URL" ]; then
+      git clone "$REPO_URL" .
+    elif [ -n "$SYMPHONY_REPO" ] && [ "$SYMPHONY_REPO" != '$SYMPHONY_REPO' ]; then
+      if command -v gh >/dev/null 2>&1; then
+        gh repo clone "$SYMPHONY_REPO" .
+      else
+        git clone "https://github.com/$SYMPHONY_REPO.git" .
+      fi
+    else
+      echo "No repository source configured. Set REPO_URL or workspace.repo." >&2
+      exit 1
+    fi
     bun install 2>/dev/null || npm install 2>/dev/null || true
     cat >> AGENTS.md << 'AGENTS'
     # Guidelines

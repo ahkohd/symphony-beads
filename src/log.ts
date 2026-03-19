@@ -8,6 +8,7 @@ import { dirname } from "node:path";
 
 let jsonMode = false;
 let logFilePath: string | null = null;
+const silentNonErrorLogs = process.env.SYMPHONY_SILENT_LOGS === "1";
 
 export function setJsonMode(on: boolean): void {
   jsonMode = on;
@@ -35,6 +36,10 @@ interface LogEntry {
 
 function emit(entry: LogEntry): void {
   const ts = new Date().toISOString();
+
+  if (silentNonErrorLogs && entry.level !== "error") {
+    return;
+  }
 
   if (jsonMode) {
     const out = JSON.stringify({ ts, ...entry });

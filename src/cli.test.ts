@@ -26,14 +26,18 @@ async function runCli(
   args: string[],
   opts: RunCliOptions = { cwd: process.cwd() },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const env = {
+    ...process.env,
+    ...(opts.env ?? {}),
+  };
+
+  delete env.SYMPHONY_SILENT_LOGS;
+
   const proc = Bun.spawn(["bun", CLI_PATH, ...args], {
     cwd: opts.cwd,
     stdout: "pipe",
     stderr: "pipe",
-    env: {
-      ...process.env,
-      ...(opts.env ?? {}),
-    },
+    env,
   });
 
   const timeout = opts.timeout ?? 10_000;

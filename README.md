@@ -212,7 +212,19 @@ polling:
   interval_ms: 30000
 hooks:
   after_create: |
-    git clone $REPO_URL .
+    set -e
+    if [ -n "$REPO_URL" ]; then
+      git clone "$REPO_URL" .
+    elif [ -n "$SYMPHONY_REPO" ] && [ "$SYMPHONY_REPO" != '$SYMPHONY_REPO' ]; then
+      if command -v gh >/dev/null 2>&1; then
+        gh repo clone "$SYMPHONY_REPO" .
+      else
+        git clone "https://github.com/$SYMPHONY_REPO.git" .
+      fi
+    else
+      echo "No repository source configured. Set REPO_URL or workspace.repo." >&2
+      exit 1
+    fi
     echo "node_modules" >> .gitignore
     bun install
   before_run: |
@@ -237,7 +249,11 @@ Prompt template with Mustache syntax...
 |----------|-------------|
 | `SYMPHONY_ISSUE_ID` | Current issue identifier |
 | `SYMPHONY_PROJECT_PATH` | Absolute path to the project root |
-| `REPO_URL` | Set by you in your environment |
+| `SYMPHONY_REMOTE` | Git remote name from `workspace.remote` |
+| `SYMPHONY_REPO` | Repository slug from `workspace.repo` (e.g. `owner/repo`) |
+| `REPO_URL` | Optional full clone URL set by you in your environment |
+
+The default `after_create` hook fails fast if neither `REPO_URL` nor `workspace.repo`/`SYMPHONY_REPO` is available, so misconfiguration is surfaced early instead of creating an empty workspace.
 
 ### Prompt template variables
 
@@ -273,7 +289,7 @@ symphony instances                   # see all running + IDs
 symphony stop --id <instance-id>    # stop one specific instance
 ```
 
-Isolation: `.symphony.lock` prevents duplicates, global registry (`~/.symphony/instances/`) detects workspace root collisions.
+Isolation: `.symphony.lock` prevents duplicates, global registry (`~/.symphony/instances/`) detects workspace root collisions (including nested overlaps). `symphony doctor` also reports overlapping workspace roots across running instances.
 
 ## WORKFLOW.md hot-reload
 

@@ -6,7 +6,7 @@ import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseWorkflow, validateConfig } from "./config.ts";
 import { exec } from "./exec.ts";
-import { listInstances } from "./lock.ts";
+import { checkWorkspaceCollisions, type LockInfo, listInstances } from "./lock.ts";
 
 export interface CheckResult {
   name: string;
@@ -52,6 +52,9 @@ export async function runDoctor(workflowPath: string): Promise<DoctorReport> {
 
   // 10. lock
   checks.push(await checkLock());
+
+  // 11. workspace overlap risk
+  checks.push(await checkWorkspaceOverlapRisk());
 
   const ok = checks.every((c) => c.ok);
   return { ok, checks };
@@ -202,4 +205,74 @@ async function checkLock(): Promise<CheckResult> {
   }
   const pids = instances.map((i) => `PID ${i.pid} (${i.project_path})`).join(", ");
   return { name: "lock", ok: true, detail: `${instances.length} running: ${pids}` };
+}
+
+interface WorkspaceOverlapPair {
+  left: LockInfo;
+  right: LockInfo;
+}
+
+export async function checkWorkspaceOverlapRisk(): Promise<CheckResult> {
+  const instances = await listInstances();
+
+  if (instances.length < 2) {
+    return {
+      name: "workspace-overlap",
+      ok: true,
+      detail: "no overlap risk (<2 running instances)",
+    };
+  }
+
+  const overlaps = await findWorkspaceOverlapPairs(instances);
+
+  if (overlaps.length === 0) {
+    return {
+      name: "workspace-overlap",
+      ok: true,
+      detail: `${instances.length} running instances, no overlapping workspace roots`,
+    };
+  }
+
+  const samples = overlaps
+    .slice(0, 2)
+    .map((pair) => `${pair.left.workspace_root} ↔ ${pair.right.workspace_root}`)
+    .join("; ");
+  const more = overlaps.length > 2 ? ` (+${overlaps.length - 2} more)` : "";
+
+  return {
+    name: "workspace-overlap",
+    ok: false,
+    detail: `${overlaps.length} overlapping workspace root pair(s): ${samples}${more}`,
+  };
+}
+
+async function findWorkspaceOverlapPairs(instances: LockInfo[]): Promise<WorkspaceOverlapPair[]> {
+  const pairs = new Map<string, WorkspaceOverlapPair>();
+
+  for (const instance of instances) {
+    const conflicts = await checkWorkspaceCollisions(
+      instance.project_path,
+      instance.workspace_root,
+    );
+
+    for (const conflict of conflicts) {
+      const key = pairKey(instance.project_path, conflict.project_path);
+      if (pairs.has(key)) continue;
+
+      const [left, right] = orderedPair(instance, conflict);
+      pairs.set(key, { left, right });
+    }
+  }
+
+  return Array.from(pairs.values());
+}
+
+function pairKey(pathA: string, pathB: string): string {
+  return pathA < pathB ? `${pathA}::${pathB}` : `${pathB}::${pathA}`;
+}
+
+function orderedPair(instanceA: LockInfo, instanceB: LockInfo): [LockInfo, LockInfo] {
+  return instanceA.project_path < instanceB.project_path
+    ? [instanceA, instanceB]
+    : [instanceB, instanceA];
 }
