@@ -406,5 +406,3 @@ bun run smoke:cli
 ```
 
 CI runs these gates on push/PR.
-
-License: see [LICENSE.md](LICENSE.md).
