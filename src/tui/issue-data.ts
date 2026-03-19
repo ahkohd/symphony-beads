@@ -36,6 +36,82 @@ export interface IssueComment {
   created_at: string;
 }
 
+function extractPrUrl(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const match = text.match(/https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/i);
+  return match ? match[0] : null;
+}
+
+function parsePrListUrl(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const url = (item as { url?: unknown }).url;
+      if (typeof url === "string" && url.trim()) {
+        return url;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function lookupPrUrlViaGitHub(issueId: string): Promise<string | null> {
+  const byHead = await exec(
+    [
+      "gh",
+      "pr",
+      "list",
+      "--state",
+      "all",
+      "--head",
+      `issue/${issueId}`,
+      "--json",
+      "url",
+      "--limit",
+      "1",
+    ],
+    {
+      cwd: process.cwd(),
+      timeout: 10000,
+    },
+  );
+
+  if (byHead.code === 0 && byHead.stdout.trim()) {
+    const url = parsePrListUrl(byHead.stdout);
+    if (url) return url;
+  }
+
+  const byTitle = await exec(
+    [
+      "gh",
+      "pr",
+      "list",
+      "--state",
+      "all",
+      "--search",
+      `${issueId} in:title`,
+      "--json",
+      "url",
+      "--limit",
+      "1",
+    ],
+    {
+      cwd: process.cwd(),
+      timeout: 10000,
+    },
+  );
+
+  if (byTitle.code === 0 && byTitle.stdout.trim()) {
+    return parsePrListUrl(byTitle.stdout);
+  }
+
+  return null;
+}
+
 /**
  * Fetch issue details via `bd show <id> --json`.
  * Returns null if the command fails or the issue is not found.
@@ -52,20 +128,31 @@ export async function fetchIssueDetail(issueId: string): Promise<IssueDetail | n
     const issue = Array.isArray(parsed) ? parsed[0] : parsed;
     if (!issue) return null;
 
-    // Try to extract PR URL from description or any field
+    const resolvedIssueId =
+      typeof issue.id === "string" && issue.id.trim() ? issue.id.trim() : issueId;
+    const status = typeof issue.status === "string" ? issue.status : "unknown";
+
+    // Try to extract PR URL from explicit field or textual content.
     let prUrl: string | null = null;
-    if (issue.pr_url) {
+    if (typeof issue.pr_url === "string" && issue.pr_url.trim()) {
       prUrl = issue.pr_url;
-    } else if (issue.description) {
-      const prMatch = issue.description.match(/https?:\/\/github\.com\/[^\s]+\/pull\/\d+/);
-      if (prMatch) prUrl = prMatch[0];
+    }
+
+    if (!prUrl) {
+      prUrl = extractPrUrl(typeof issue.description === "string" ? issue.description : null);
+    }
+
+    // Most local bead issues only contain "PR pushed (#123)" in comments.
+    // For review/closed issues, query GitHub by branch/title as fallback.
+    if (!prUrl && (status === "review" || status === "closed")) {
+      prUrl = await lookupPrUrlViaGitHub(resolvedIssueId);
     }
 
     return {
-      id: issue.id ?? issueId,
+      id: resolvedIssueId,
       title: issue.title ?? "(untitled)",
       description: issue.description ?? null,
-      status: issue.status ?? "unknown",
+      status,
       priority: issue.priority ?? null,
       issue_type: issue.issue_type ?? "task",
       owner: issue.owner ?? null,

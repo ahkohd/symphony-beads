@@ -119,6 +119,85 @@ describe("fetchIssueDetail", () => {
     expect(result!.pr_url).toBe("https://github.com/org/repo/pull/99");
   });
 
+  test("falls back to gh pr lookup by branch for review/closed issues", async () => {
+    const issueJson = [
+      {
+        id: "test-branch-lookup",
+        title: "Review issue",
+        description: "No explicit PR URL",
+        status: "review",
+      },
+    ];
+
+    mockExec.mockResolvedValueOnce({
+      code: 0,
+      stdout: JSON.stringify(issueJson),
+      stderr: "",
+    });
+    mockExec.mockResolvedValueOnce({
+      code: 0,
+      stdout: JSON.stringify([{ url: "https://github.com/org/repo/pull/123" }]),
+      stderr: "",
+    });
+
+    const result = await fetchIssueDetail("test-branch-lookup");
+    expect(result).not.toBeNull();
+    expect(result!.pr_url).toBe("https://github.com/org/repo/pull/123");
+  });
+
+  test("falls back to gh title search when branch lookup is empty", async () => {
+    const issueJson = [
+      {
+        id: "test-title-lookup",
+        title: "Closed issue",
+        description: "No explicit PR URL",
+        status: "closed",
+      },
+    ];
+
+    mockExec.mockResolvedValueOnce({
+      code: 0,
+      stdout: JSON.stringify(issueJson),
+      stderr: "",
+    });
+    mockExec.mockResolvedValueOnce({
+      code: 0,
+      stdout: JSON.stringify([]),
+      stderr: "",
+    });
+    mockExec.mockResolvedValueOnce({
+      code: 0,
+      stdout: JSON.stringify([{ url: "https://github.com/org/repo/pull/456" }]),
+      stderr: "",
+    });
+
+    const result = await fetchIssueDetail("test-title-lookup");
+    expect(result).not.toBeNull();
+    expect(result!.pr_url).toBe("https://github.com/org/repo/pull/456");
+  });
+
+  test("does not run gh lookup for non-review/non-closed issues", async () => {
+    const issueJson = [
+      {
+        id: "test-open-no-gh",
+        title: "Open issue",
+        description: "No explicit PR URL",
+        status: "open",
+      },
+    ];
+
+    mockExec.mockResolvedValueOnce({
+      code: 0,
+      stdout: JSON.stringify(issueJson),
+      stderr: "",
+    });
+
+    const result = await fetchIssueDetail("test-open-no-gh");
+    expect(result).not.toBeNull();
+    expect(result!.pr_url).toBeNull();
+    expect(mockExec).toHaveBeenCalledTimes(1);
+  });
+
   test("returns null on command failure", async () => {
     mockExec.mockResolvedValueOnce({
       code: 1,
