@@ -212,13 +212,18 @@ polling:
   interval_ms: 30000
 hooks:
   after_create: |
-    git clone --single-branch --branch master $REPO_URL .
+    git clone $REPO_URL .
     echo "node_modules" >> .gitignore
     bun install
   before_run: |
-    git fetch origin master
+    DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed "s|refs/remotes/origin/||" || echo "master")
+    git fetch origin $DEFAULT_BRANCH 2>/dev/null || true
     git fetch origin issue/$SYMPHONY_ISSUE_ID 2>/dev/null || true
-    git checkout -B issue/$SYMPHONY_ISSUE_ID origin/master
+    if git rev-parse --verify origin/issue/$SYMPHONY_ISSUE_ID >/dev/null 2>&1; then
+      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/issue/$SYMPHONY_ISSUE_ID
+    else
+      git checkout -B issue/$SYMPHONY_ISSUE_ID origin/$DEFAULT_BRANCH
+    fi
 log:
   file: ./symphony.log
 ---

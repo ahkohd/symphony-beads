@@ -17,7 +17,7 @@ polling:
   interval_ms: 30000
 hooks:
   after_create: |
-    git clone --single-branch --branch master $REPO_URL . 2>/dev/null || true
+    git clone $REPO_URL . 2>/dev/null || true
     bun install 2>/dev/null || npm install 2>/dev/null || true
     cat >> AGENTS.md << 'AGENTS'
     # Guidelines
@@ -30,6 +30,7 @@ hooks:
     DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/$SYMPHONY_REMOTE/HEAD 2>/dev/null | sed "s|refs/remotes/$SYMPHONY_REMOTE/||" || echo "master")
     git fetch $SYMPHONY_REMOTE $DEFAULT_BRANCH 2>/dev/null || true
     git fetch $SYMPHONY_REMOTE issue/$SYMPHONY_ISSUE_ID 2>/dev/null || true
+    if git rev-parse --verify $SYMPHONY_REMOTE/issue/$SYMPHONY_ISSUE_ID >/dev/null 2>&1; then
       git checkout -B issue/$SYMPHONY_ISSUE_ID $SYMPHONY_REMOTE/issue/$SYMPHONY_ISSUE_ID
     else
       git checkout -B issue/$SYMPHONY_ISSUE_ID $SYMPHONY_REMOTE/$DEFAULT_BRANCH
