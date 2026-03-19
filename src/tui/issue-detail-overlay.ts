@@ -27,6 +27,17 @@ import {
   type IssueComment,
   type IssueDetail,
 } from "./issue-data.ts";
+import { handleIssueDetailKey } from "./issue-detail-keymap.ts";
+import {
+  buildComment,
+  buildDependency,
+  buildDescription,
+  buildDivider,
+  buildHeader,
+  buildMetadata,
+  buildPrLink,
+  type VChild,
+} from "./issue-detail-sections.ts";
 import { canOpenPr } from "./pr-link-resolver.ts";
 
 // -- Colors ------------------------------------------------------------------
@@ -69,9 +80,6 @@ const STATUS_COLORS: Record<string, string> = {
   closed: COLORS.textDim,
   done: COLORS.textDim,
 };
-
-// -- Types for VNode children ------------------------------------------------
-type VChild = ReturnType<typeof Box> | ReturnType<typeof Text> | null;
 
 // -- Overlay -----------------------------------------------------------------
 
@@ -199,27 +207,27 @@ export class IssueDetailOverlay {
     const children: VChild[] = [];
 
     // -- Header: ID + Title --
-    children.push(this.buildHeader(issue));
+    children.push(buildHeader(issue, COLORS));
 
     // -- Metadata row: status, priority, type, owner --
-    children.push(this.buildMetadata(issue));
-    children.push(this.buildDivider());
+    children.push(buildMetadata(issue, COLORS, STATUS_COLORS, PRIORITY_COLORS, PRIORITY_LABELS));
+    children.push(buildDivider(COLORS));
 
     // -- Description --
     if (issue.description) {
       children.push(Text({ content: " Description", fg: COLORS.accent, attributes: 1 }));
-      children.push(this.buildDescription(issue.description));
+      children.push(buildDescription(issue.description, COLORS));
     }
 
     // -- PR Link --
     if (issue.pr_url) {
-      children.push(this.buildDivider());
-      children.push(this.buildPrLink(issue.pr_url));
+      children.push(buildDivider(COLORS));
+      children.push(buildPrLink(issue.pr_url, COLORS));
     }
 
     // -- Comments --
     if (comments.length > 0) {
-      children.push(this.buildDivider());
+      children.push(buildDivider(COLORS));
       children.push(
         Text({
           content: ` Comments (${comments.length})`,
@@ -228,13 +236,13 @@ export class IssueDetailOverlay {
         }),
       );
       for (const comment of comments) {
-        children.push(this.buildComment(comment));
+        children.push(buildComment(comment, COLORS, formatTimestamp));
       }
     }
 
     // -- Dependencies --
     if (issue.dependencies.length > 0) {
-      children.push(this.buildDivider());
+      children.push(buildDivider(COLORS));
       children.push(
         Text({
           content: ` Dependencies (${issue.dependencies.length})`,
@@ -243,7 +251,7 @@ export class IssueDetailOverlay {
         }),
       );
       for (const dep of issue.dependencies) {
-        children.push(this.buildDependency(dep));
+        children.push(buildDependency(dep, COLORS, STATUS_COLORS));
       }
     }
 
@@ -326,107 +334,6 @@ export class IssueDetailOverlay {
     }
 
     this.installKeyHandler();
-  }
-
-  private buildHeader(issue: IssueDetail): VChild {
-    return Box(
-      { flexDirection: "column", gap: 0 },
-      Text({ content: ` ${issue.id}`, fg: COLORS.textDim }),
-      Text({ content: ` ${issue.title}`, fg: COLORS.text, attributes: 1 }),
-    );
-  }
-
-  private buildMetadata(issue: IssueDetail): VChild {
-    const statusColor = STATUS_COLORS[issue.status] ?? COLORS.text;
-    const priorityColor =
-      issue.priority !== null ? (PRIORITY_COLORS[issue.priority] ?? COLORS.text) : COLORS.textDim;
-    const priorityLabel =
-      issue.priority !== null
-        ? (PRIORITY_LABELS[issue.priority] ?? `P${issue.priority}`)
-        : "\u2014";
-
-    return Box(
-      { flexDirection: "row", gap: 2, paddingLeft: 1 },
-      Box(
-        { flexDirection: "row", gap: 1 },
-        Text({ content: "\u25CF", fg: statusColor }),
-        Text({ content: issue.status, fg: statusColor }),
-      ),
-      Text({ content: priorityLabel, fg: priorityColor }),
-      Text({ content: issue.issue_type, fg: COLORS.magenta }),
-      issue.owner ? Text({ content: issue.owner, fg: COLORS.textDim }) : Text({ content: "" }),
-    );
-  }
-
-  private buildDescription(description: string): VChild {
-    return Box(
-      { paddingLeft: 1, paddingRight: 1, flexDirection: "column" },
-      Text({ content: description, fg: COLORS.text, wrapMode: "word" }),
-    );
-  }
-
-  private buildDivider(): VChild {
-    return Text({
-      content: "\u2500".repeat(300),
-      fg: COLORS.border,
-      wrapMode: "none",
-    });
-  }
-
-  private buildPrLink(url: string): VChild {
-    return Box(
-      { flexDirection: "row", gap: 1, paddingLeft: 1 },
-      Text({ content: " PR:", fg: COLORS.accent, attributes: 1 }),
-      Text({ content: url, fg: COLORS.cyan }),
-    );
-  }
-
-  private buildComment(comment: IssueComment): VChild {
-    const timestamp = comment.created_at ? formatTimestamp(comment.created_at) : "";
-
-    return Box(
-      { flexDirection: "column", gap: 0, paddingLeft: 1, paddingBottom: 1 },
-      Box(
-        { flexDirection: "row", gap: 1 },
-        Text({ content: comment.author, fg: COLORS.cyan, attributes: 1 }),
-        Text({ content: timestamp, fg: COLORS.textDim }),
-      ),
-      Box({ paddingLeft: 1 }, Text({ content: comment.body, fg: COLORS.text, wrapMode: "word" })),
-    );
-  }
-
-  private buildDependency(dep: {
-    id: string;
-    title: string;
-    status: string;
-    dependency_type: string;
-  }): VChild {
-    const statusColor = STATUS_COLORS[dep.status] ?? COLORS.textDim;
-    const typeLabel = dep.dependency_type === "blocks" ? "\u2298 blocks" : dep.dependency_type;
-
-    return Box(
-      {
-        flexDirection: "column",
-        gap: 0,
-        paddingLeft: 1,
-        paddingBottom: 1,
-      },
-      Box(
-        { flexDirection: "row", gap: 1, paddingLeft: 1 },
-        Text({ content: "\u25CF", fg: statusColor }),
-        Text({ content: dep.status, fg: statusColor }),
-        Text({ content: dep.id, fg: COLORS.accent }),
-        Text({ content: `(${typeLabel})`, fg: COLORS.textDim }),
-      ),
-      Box(
-        {
-          flexDirection: "column",
-          paddingLeft: 3,
-          paddingRight: 1,
-        },
-        Text({ content: dep.title, fg: COLORS.text, wrapMode: "word" }),
-      ),
-    );
   }
 
   // -- Key handling ----------------------------------------------------------
@@ -523,77 +430,45 @@ export class IssueDetailOverlay {
     }
 
     this.keyHandler = (key: KeyEvent) => {
-      if (key.name === "escape") {
-        key.preventDefault();
-        key.stopPropagation();
-        this.close();
-        return;
-      }
-
-      if (key.ctrl && key.name === "d") {
-        key.preventDefault();
-        key.stopPropagation();
-        this.scrollHalfPage(1);
-        return;
-      }
-
-      if (key.ctrl && key.name === "u") {
-        key.preventDefault();
-        key.stopPropagation();
-        this.scrollHalfPage(-1);
-        return;
-      }
-
-      if (key.name === "g") {
-        key.preventDefault();
-        key.stopPropagation();
-        if (key.shift) {
-          this.scrollToBottom();
-        } else {
+      const handled = handleIssueDetailKey(key, {
+        close: () => {
+          this.close();
+        },
+        halfPageDown: () => {
+          this.scrollHalfPage(1);
+        },
+        halfPageUp: () => {
+          this.scrollHalfPage(-1);
+        },
+        scrollToTop: () => {
           this.scrollToTop();
-        }
-        return;
-      }
+        },
+        scrollToBottom: () => {
+          this.scrollToBottom();
+        },
+        openPr: () => {
+          void this.openCurrentIssuePr();
+        },
+        copyPr: () => {
+          void this.copyCurrentIssuePr();
+        },
+        scrollDown: () => {
+          this.scrollDetail(1);
+        },
+        scrollUp: () => {
+          this.scrollDetail(-1);
+        },
+        pageDown: () => {
+          this.scrollDetail(10);
+        },
+        pageUp: () => {
+          this.scrollDetail(-10);
+        },
+      });
 
-      if (key.name === "o") {
+      if (handled) {
         key.preventDefault();
         key.stopPropagation();
-        void this.openCurrentIssuePr();
-        return;
-      }
-
-      if (key.name === "y") {
-        key.preventDefault();
-        key.stopPropagation();
-        void this.copyCurrentIssuePr();
-        return;
-      }
-
-      if (key.name === "j" || key.name === "down") {
-        key.preventDefault();
-        key.stopPropagation();
-        this.scrollDetail(1);
-        return;
-      }
-
-      if (key.name === "k" || key.name === "up") {
-        key.preventDefault();
-        key.stopPropagation();
-        this.scrollDetail(-1);
-        return;
-      }
-
-      if (key.name === "pagedown") {
-        key.preventDefault();
-        key.stopPropagation();
-        this.scrollDetail(10);
-        return;
-      }
-
-      if (key.name === "pageup") {
-        key.preventDefault();
-        key.stopPropagation();
-        this.scrollDetail(-10);
       }
     };
 
