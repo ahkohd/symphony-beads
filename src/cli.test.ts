@@ -358,6 +358,44 @@ Prompt.
     expect(parsed.warnings).toContain("unknown config section: observability");
   });
 
+  it("validate text mode prints warnings count summary", async () => {
+    const workflowPath = join(tempDir, "WORKFLOW-warning-text.md");
+    const withUnknownKeys = `---
+tracker:
+  kind: beads
+  project_path: "."
+workspace:
+  root: ./workspaces
+agent:
+  max_concurrent: 1
+runner:
+  command: echo noop
+  commnd: echo typo
+polling:
+  interval_ms: 30000
+log:
+  file: ./test-symphony.log
+observability:
+  enabled: true
+---
+Prompt.
+`;
+
+    await writeFile(workflowPath, withUnknownKeys);
+
+    const { stdout, exitCode } = await runCli(["validate", "--workflow", workflowPath], {
+      cwd: tempDir,
+      env: {
+        HOME: join(tempDir, "isolated-home"),
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/warnings:\s+2/);
+    expect(stdout).toContain("unknown config key: runner.commnd");
+    expect(stdout).toContain("unknown config section: observability");
+  });
+
   it("validate --strict --json fails when warnings exist", async () => {
     const workflowPath = join(tempDir, "WORKFLOW-strict-warning.md");
     const withUnknownKeys = `---
