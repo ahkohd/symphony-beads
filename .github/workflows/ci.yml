@@ -35,3 +35,6 @@ jobs:
 
       - name: Test
         run: bun run test
+        
+      - name: CLI smoke
+        run: bun run smoke:cli
