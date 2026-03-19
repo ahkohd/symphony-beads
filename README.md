@@ -32,7 +32,7 @@ Built on [Beads](https://github.com/steveyegge/beads) and [Bun](https://bun.sh),
 - [Bun](https://bun.sh) >= 1.0
 - [Beads](https://github.com/steveyegge/beads) (`bd` CLI)
 - [Dolt](https://docs.dolthub.com/introduction/installation) (required by Beads)
-- [pi](https://www.npmjs.com/package/@mariozechner/pi-coding-agent)
+- [pi (optional)](https://www.npmjs.com/package/@mariozechner/pi-coding-agent)
 - [gh](https://cli.github.com/) (for PR creation/monitoring)
 - [git](https://git-scm.com/)
 
@@ -362,7 +362,7 @@ bd init
 symphony doctor
 ```
 
-### Logs JSON + follow conflict
+### Logs JSON
 
 `logs --json` and `logs --follow` are mutually exclusive.
 
@@ -370,12 +370,12 @@ symphony doctor
 
 ## JSON output quick reference
 
-- `start --json` → includes `instance_id`, `pid`, `log_file`
-- `status --json` → includes `service`, `issues`, `by_state`
-- `instances --json` → includes `instances[]` with `id`, `pid`, `workspace_root`
-- `stop --json` → structured stop result; errors include typed codes (`instance_not_found`, `instance_id_ambiguous`, `stop_flag_conflict`)
-- `validate --json` → `valid`, `errors`, `warnings`, `strict`
-- `doctor --json` → `checks[]` (+ `fix` section when using `--fix`)
+- `start --json`: includes `instance_id`, `pid`, `log_file`
+- `status --json`: includes `service`, `issues`, `by_state`
+- `instances --json`: includes `instances[]` with `id`, `pid`, `workspace_root`
+- `stop --json`: structured stop result; errors include typed codes (`instance_not_found`, `instance_id_ambiguous`, `stop_flag_conflict`)
+- `validate --json`: `valid`, `errors`, `warnings`, `strict`
+- `doctor --json`: `checks[]` (`fix` section when using `--fix`)
 
 ---
 
@@ -390,19 +390,3 @@ symphony stop --id <instance-id>
 ```
 
 Use non-overlapping `workspace.root` values across projects.
-
----
-
-## Contributing and quality gates
-
-Before commit:
-
-```bash
-bun run fmt:check
-bun run lint
-bun run typecheck
-bun run test
-bun run smoke:cli
-```
-
-CI runs these gates on push/PR.
