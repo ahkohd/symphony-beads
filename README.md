@@ -6,8 +6,6 @@ It polls issues, creates per-issue workspaces, runs the configured coding runner
 
 Built on [Beads](https://github.com/steveyegge/beads) and [Bun](https://bun.sh), with `pi` as the default runner. Based on the [Symphony spec](https://github.com/openai/symphony/blob/main/SPEC.md).
 
----
-
 ## Table of contents
 
 - [Requirements](#requirements)
@@ -27,8 +25,6 @@ Built on [Beads](https://github.com/steveyegge/beads) and [Bun](https://bun.sh),
 - [Running multiple projects](#running-multiple-projects)
 - [Contributing and quality gates](#contributing-and-quality-gates)
 
----
-
 ## Requirements
 
 - [Bun](https://bun.sh) >= 1.0
@@ -47,8 +43,6 @@ cd symphony-beads
 bun install
 bun link    # installs the `symphony` command globally
 ```
-
----
 
 ## Quick start (5 minutes)
 
@@ -71,8 +65,6 @@ symphony status
 symphony logs -f
 ```
 
----
-
 ## First-run checklist
 
 Before first `start`, confirm:
@@ -84,8 +76,6 @@ Before first `start`, confirm:
 3. `workspace.root` is unique for this project (not overlapping another running instance root).
 4. `symphony validate --strict` passes.
 5. `symphony doctor` is healthy.
-
----
 
 ## Daily operator workflow
 
@@ -104,8 +94,6 @@ symphony stop --id <instance-id-or-unique-prefix>
 # Stop all
 symphony stop --all
 ```
-
----
 
 ## Creating tickets (human or agent)
 
@@ -126,8 +114,6 @@ bd update bd-42 --unset-metadata model
 ```
 
 When model metadata is present, Symphony uses it as the highest-priority model routing signal (see model routing section below).
-
----
 
 ## CLI reference
 
@@ -171,8 +157,6 @@ Doctor flags:
   --dry-run         Preview fixes without applying changes (requires --fix)
 ```
 
----
-
 ## Runtime isolation and instance IDs
 
 ### Isolation model
@@ -199,8 +183,6 @@ Prefix behavior for `stop --id`:
 - exact ID match wins
 - otherwise unique prefix works
 - ambiguous prefix fails with `instance_id_ambiguous`
-
----
 
 ## WORKFLOW.md configuration
 
@@ -280,7 +262,6 @@ log:
 | `{{ attempt }}` | Retry attempt |
 | `{{ review_feedback }}` | PR review feedback on rework |
 
----
 
 ## Model routing and per-ticket model selection
 
@@ -316,8 +297,6 @@ You can set per-issue model override directly in Beads:
 bd update bd-42 --set-metadata model=claude-opus-4-6
 ```
 
----
-
 ## Issue lifecycle and backlog
 
 ```text
@@ -347,7 +326,6 @@ Kanban backlog shortcuts:
 - `b` → move selected issue to backlog (`deferred`)
 - `B` → promote selected issue from backlog (`open`)
 
----
 
 ## Validate and doctor
 
@@ -381,7 +359,6 @@ Use preview mode first:
 symphony doctor --fix --dry-run
 ```
 
----
 
 ## Troubleshooting
 
@@ -427,8 +404,6 @@ symphony doctor
 
 `logs --json` and `logs --follow` are mutually exclusive.
 
----
-
 ## JSON output quick reference
 
 - `start --json`: includes `instance_id`, `pid`, `log_file`
@@ -438,7 +413,6 @@ symphony doctor
 - `validate --json`: `valid`, `errors`, `warnings`, `strict`
 - `doctor --json`: `checks[]` (`fix` section when using `--fix`)
 
----
 
 ## Running multiple projects
 
