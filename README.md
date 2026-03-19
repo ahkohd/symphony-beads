@@ -179,7 +179,7 @@ Prefix behavior for `stop --id`:
 
 ## WORKFLOW.md configuration
 
-`WORKFLOW.md` has YAML front-matter + prompt body.
+`WORKFLOW.md` has YAML front-matter and prompt body.
 
 ### Front-matter example (aligned with `symphony init` defaults)
 
