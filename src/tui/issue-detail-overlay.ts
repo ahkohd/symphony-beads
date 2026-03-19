@@ -317,7 +317,6 @@ export class IssueDetailOverlay {
             paddingLeft: 1,
             paddingRight: 2,
           },
-          Text({ content: "\u2500".repeat(300), fg: COLORS.border, wrapMode: "none" }),
           Text({ content: footerText, fg: COLORS.textDim, wrapMode: "none" }),
         ),
       ),
