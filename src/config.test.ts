@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseWorkflow, validateConfig } from "./config.ts";
+import { findUnknownWorkflowKeys, parseWorkflow, validateConfig } from "./config.ts";
 import type { ServiceConfig } from "./types.ts";
 
 // ---------------------------------------------------------------------------
@@ -201,6 +201,44 @@ describe("validateConfig", () => {
       makeConfig({ "runner.command": "", "agent.max_concurrent": -1, "polling.interval_ms": 0 }),
     );
     expect(errors.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("findUnknownWorkflowKeys", () => {
+  it("returns empty for workflows without front-matter", () => {
+    expect(findUnknownWorkflowKeys("Prompt only.")).toEqual([]);
+  });
+
+  it("returns empty for known sections and keys", () => {
+    const warnings = findUnknownWorkflowKeys(`---
+tracker:
+  kind: beads
+runner:
+  command: pi --no-session
+polling:
+  interval_ms: 30000
+---
+Prompt.
+`);
+
+    expect(warnings).toEqual([]);
+  });
+
+  it("detects unknown sections and keys", () => {
+    const warnings = findUnknownWorkflowKeys(`---
+runner:
+  command: pi --no-session
+  commnd: pi --oops
+observability:
+  enabled: true
+---
+Prompt.
+`);
+
+    expect(warnings).toEqual([
+      "unknown config key: runner.commnd",
+      "unknown config section: observability",
+    ]);
   });
 });
 

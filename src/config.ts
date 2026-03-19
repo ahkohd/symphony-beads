@@ -83,6 +83,16 @@ to a human reviewer. The reviewer will either accept (move to done) or request
 rework (move back to open).
 `;
 
+const KNOWN_CONFIG_SCHEMA: Readonly<Record<string, readonly string[]>> = {
+  tracker: ["kind", "project_path", "active_states", "terminal_states"],
+  polling: ["interval_ms"],
+  workspace: ["root", "repo", "remote"],
+  hooks: ["after_create", "before_run", "after_run", "before_remove", "timeout_ms"],
+  agent: ["max_concurrent", "max_concurrent_by_state", "max_turns", "max_retry_backoff_ms"],
+  runner: ["command", "model", "models", "turn_timeout_ms", "stall_timeout_ms"],
+  log: ["file"],
+};
+
 // -- Public API --------------------------------------------------------------
 
 export function parseWorkflow(content: string): WorkflowDefinition {
@@ -137,6 +147,33 @@ export function validateConfig(config: ServiceConfig): string[] {
   }
 
   return errors;
+}
+
+export function findUnknownWorkflowKeys(content: string): string[] {
+  const { frontMatter } = splitFrontMatter(content);
+  if (!frontMatter) {
+    return [];
+  }
+
+  const raw = parseYaml(frontMatter);
+  const warnings: string[] = [];
+
+  for (const [section, values] of Object.entries(raw)) {
+    const allowedKeys = KNOWN_CONFIG_SCHEMA[section];
+
+    if (!allowedKeys) {
+      warnings.push(`unknown config section: ${section}`);
+      continue;
+    }
+
+    for (const key of Object.keys(values)) {
+      if (!allowedKeys.includes(key)) {
+        warnings.push(`unknown config key: ${section}.${key}`);
+      }
+    }
+  }
+
+  return warnings.sort((a, b) => a.localeCompare(b));
 }
 
 // -- Front-matter split ------------------------------------------------------

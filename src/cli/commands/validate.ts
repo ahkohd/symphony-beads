@@ -1,5 +1,5 @@
 import { dirname, resolve } from "node:path";
-import { validateConfig } from "../../config.ts";
+import { findUnknownWorkflowKeys, validateConfig } from "../../config.ts";
 import { checkWorkspaceCollisions } from "../../lock.ts";
 import { log } from "../../log.ts";
 import { printJson } from "../output.ts";
@@ -7,13 +7,16 @@ import type { Args } from "../types.ts";
 import { loadWorkflow } from "../workflow.ts";
 
 export async function runValidateCommand(args: Args): Promise<void> {
-  const workflow = await loadWorkflow(args.workflow, args.json);
+  const workflowPath = resolve(args.workflow);
+  const workflow = await loadWorkflow(workflowPath, args.json);
   const errors = validateConfig(workflow.config);
 
-  const projectDir = resolve(dirname(args.workflow));
+  const projectDir = resolve(dirname(workflowPath));
   const workspaceRoot = resolve(workflow.config.workspace.root);
   const conflicts = await checkWorkspaceCollisions(projectDir, workspaceRoot);
-  const warnings: string[] = [];
+
+  const source = await Bun.file(workflowPath).text();
+  const warnings = findUnknownWorkflowKeys(source);
 
   for (const conflict of conflicts) {
     warnings.push(
@@ -35,7 +38,7 @@ export async function runValidateCommand(args: Args): Promise<void> {
   }
 
   if (errors.length === 0) {
-    log.info("workflow is valid", { file: args.workflow });
+    log.info("workflow is valid", { file: workflowPath });
     console.log(`  tracker:        ${workflow.config.tracker.kind}`);
     console.log(`  project:        ${workflow.config.tracker.project_path}`);
     console.log(`  runner:         ${workflow.config.runner.command}`);
@@ -49,7 +52,7 @@ export async function runValidateCommand(args: Args): Promise<void> {
     return;
   }
 
-  log.error("workflow has errors", { file: args.workflow });
+  log.error("workflow has errors", { file: workflowPath });
   for (const error of errors) {
     console.log(`  - ${error}`);
   }

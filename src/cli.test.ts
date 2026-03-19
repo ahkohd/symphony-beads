@@ -311,6 +311,46 @@ describe("CLI validate", () => {
     expect(parsed.errors).toEqual([]);
   });
 
+  it("validate --json warns on unknown workflow keys", async () => {
+    const workflowPath = join(tempDir, "WORKFLOW-unknown.md");
+    const withUnknownKeys = `---
+tracker:
+  kind: beads
+  project_path: "."
+workspace:
+  root: ./workspaces
+agent:
+  max_concurrent: 1
+runner:
+  command: echo noop
+  commnd: echo typo
+polling:
+  interval_ms: 30000
+log:
+  file: ./test-symphony.log
+observability:
+  enabled: true
+---
+Prompt.
+`;
+
+    await writeFile(workflowPath, withUnknownKeys);
+
+    const { stdout, exitCode } = await runCli(["validate", "--json", "--workflow", workflowPath], {
+      cwd: tempDir,
+      env: {
+        HOME: join(tempDir, "isolated-home"),
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout.trim());
+    expect(parsed.valid).toBe(true);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.warnings).toContain("unknown config key: runner.commnd");
+    expect(parsed.warnings).toContain("unknown config section: observability");
+  });
+
   it("validate fails for missing workflow file", async () => {
     const { exitCode } = await runCli(["validate", "--workflow", join(tempDir, "NONEXISTENT.md")], {
       cwd: tempDir,
