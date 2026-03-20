@@ -38,6 +38,16 @@ Built on [Beads](https://github.com/steveyegge/beads) and [Bun](https://bun.sh),
 
 ## Install
 
+### From npm (recommended)
+
+```bash
+npm i -g symphony-beads
+# or
+bun add -g symphony-beads
+```
+
+### From source
+
 ```bash
 git clone https://github.com/ahkohd/symphony-beads.git
 cd symphony-beads
