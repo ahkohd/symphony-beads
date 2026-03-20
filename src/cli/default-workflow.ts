@@ -31,13 +31,15 @@ hooks:
       exit 1
     fi
     bun install 2>/dev/null || npm install 2>/dev/null || true
-    cat >> AGENTS.md << 'AGENTS'
-    # Guidelines
-    - Work ONLY within this directory. Do not read or write files outside of it.
-    - Do not cd to parent directories or access ../
-    - All file paths must be relative to the current working directory.
-    - Use git to commit and push your changes when done.
-    AGENTS
+    if ! grep -q "^# Guidelines$" AGENTS.md 2>/dev/null; then
+      cat >> AGENTS.md << 'AGENTS'
+      # Guidelines
+      - Work ONLY within this directory. Do not read or write files outside of it.
+      - Do not cd to parent directories or access ../
+      - All file paths must be relative to the current working directory.
+      - Use git to commit and push your changes when done.
+      AGENTS
+    fi
   before_run: |
     DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/$SYMPHONY_REMOTE/HEAD 2>/dev/null | sed "s|refs/remotes/$SYMPHONY_REMOTE/||" || echo "master")
     git fetch $SYMPHONY_REMOTE $DEFAULT_BRANCH 2>/dev/null || true

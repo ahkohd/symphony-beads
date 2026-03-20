@@ -14,7 +14,7 @@ describe("DEFAULT_WORKFLOW", () => {
     expect(beforeRun).toContain("fi");
   });
 
-  it("after_create fails fast and supports REPO_URL/SYMPHONY_REPO fallback", () => {
+  it("after_create fails fast, supports repo fallback, and appends AGENTS guidance idempotently", () => {
     const workflow = parseWorkflow(DEFAULT_WORKFLOW);
     const afterCreate = workflow.config.hooks.after_create ?? "";
 
@@ -27,6 +27,8 @@ describe("DEFAULT_WORKFLOW", () => {
     expect(afterCreate).toContain(
       "No repository source configured. Set REPO_URL or workspace.repo.",
     );
+    expect(afterCreate).toContain('if ! grep -q "^# Guidelines$" AGENTS.md 2>/dev/null; then');
+    expect(afterCreate).toContain("cat >> AGENTS.md << 'AGENTS'");
     expect(afterCreate).not.toContain("--branch master");
     expect(afterCreate).not.toContain("git clone $REPO_URL . 2>/dev/null || true");
   });

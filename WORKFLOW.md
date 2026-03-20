@@ -20,14 +20,16 @@ hooks:
     gh repo clone $SYMPHONY_REPO . || true
 
     bun install 2>/dev/null || true
-    cat >> AGENTS.md << 'AGENTS'
+    if ! grep -q "^# Symphony Agent Guidelines$" AGENTS.md 2>/dev/null; then
+      cat >> AGENTS.md << 'AGENTS'
 
-    # Symphony Agent Guidelines
-    - Work ONLY within this directory. Do not read or write files outside of it.
-    - Do not cd to parent directories or access ../
-    - All file paths must be relative to the current working directory.
-    - Use git to commit and push your changes when done.
-    AGENTS
+      # Symphony Agent Guidelines
+      - Work ONLY within this directory. Do not read or write files outside of it.
+      - Do not cd to parent directories or access ../
+      - All file paths must be relative to the current working directory.
+      - Use git to commit and push your changes when done.
+      AGENTS
+    fi
   before_run: |
     DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/$SYMPHONY_REMOTE/HEAD 2>/dev/null | sed "s|refs/remotes/$SYMPHONY_REMOTE/||" || echo "master")
     git fetch $SYMPHONY_REMOTE $DEFAULT_BRANCH 2>/dev/null || true
