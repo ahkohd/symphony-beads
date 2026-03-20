@@ -1,5 +1,6 @@
 import {
   COLORS,
+  formatIssueCount,
   type Issue,
   makeColumnScrollboxId,
   makeIssueCardId,
@@ -24,7 +25,7 @@ export function Header({ issueCount, status }: { issueCount: number; status: str
       <text>
         <strong fg={COLORS.accent}>Symphony</strong>
         <span fg={COLORS.textDim}> Kanban</span>
-        <span fg={COLORS.textDim}> — {issueCount} issues</span>
+        <span fg={COLORS.textDim}> — {formatIssueCount(issueCount)}</span>
         <span fg={COLORS.textDim}>{statsStr}</span>
       </text>
       <text>{status ? <span fg={COLORS.yellow}> {status}</span> : null}</text>

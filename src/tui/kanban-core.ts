@@ -130,6 +130,10 @@ export function truncStr(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
+export function formatIssueCount(issueCount: number): string {
+  return `${issueCount} issue${issueCount === 1 ? "" : "s"}`;
+}
+
 export function parseIssueTs(value: string | null): number {
   if (!value) return 0;
   const ts = Date.parse(value);
