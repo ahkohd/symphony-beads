@@ -170,9 +170,9 @@ Kanban is an operator view for triage and monitoring. Ticket creation remains ag
 - `r`: refresh
 - `q`: quit
 
-Placeholder screenshot (replace later):
+Kanban screenshot:
 
-![Kanban screenshot placeholder](https://broken-link.example.com/symphony-kanban.png)
+![Kanban screenshot](https://github.com/user-attachments/assets/41b0f5d4-c935-4360-b196-4d0e6475e34d)
 
 ## Runtime isolation and instance IDs
 
