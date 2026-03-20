@@ -361,8 +361,8 @@ symphony doctor --fix --dry-run
 
 
 ## Troubleshooting
-
-### `No repository source configured. Set REPO_URL or workspace.repo.`
+### No repository source configured
+No repository source configured. Set `REPO_URL` or `workspace.repo`.
 
 Configure one of:
 
