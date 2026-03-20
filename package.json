@@ -7,7 +7,7 @@
     "access": "public"
   },
   "bin": {
-    "symphony": "./src/cli.ts"
+    "symphony": "bin/symphony"
   },
   "scripts": {
     "start": "bun run src/cli.ts start",

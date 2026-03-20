@@ -1,0 +1,20 @@
+# Development and CI metadata
+.github/
+.beads/
+workspaces/
+dolt/
+renovate.json
+PLAN.md
+AGENTS.md
+TASK.md
+
+# Local/runtime artifacts
+.symphony.lock
+symphony.log
+dolt-server.lock
+dolt-server.log
+dolt-server.pid
+dolt-server.port
+
+# Tests
+src/**/*.test.ts
