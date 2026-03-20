@@ -30,6 +30,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -85,6 +87,7 @@ jobs:
           git add package.json
           git commit -m "chore(release): v${{ steps.version.outputs.new }}"
           git tag "v${{ steps.version.outputs.new }}"
+          git remote set-url origin "git@github.com:${GITHUB_REPOSITORY}.git"
           git push origin HEAD:${GITHUB_REF_NAME}
           git push origin "v${{ steps.version.outputs.new }}"
 
