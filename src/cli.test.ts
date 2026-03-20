@@ -10,6 +10,7 @@ import { findProjectRoot, parseArgs, resolveConfigPaths } from "./cli.ts";
 import type { ServiceConfig } from "./types.ts";
 
 const CLI_PATH = resolve(import.meta.dir, "cli.ts");
+const BIN_PATH = resolve(import.meta.dir, "..", "bin", "symphony");
 
 /**
  * Helper: run the symphony CLI with given args and return stdout/stderr/exitCode.
@@ -34,6 +35,38 @@ async function runCli(
   delete env.SYMPHONY_SILENT_LOGS;
 
   const proc = Bun.spawn(["bun", CLI_PATH, ...args], {
+    cwd: opts.cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+    env,
+  });
+
+  const timeout = opts.timeout ?? 10_000;
+  const timer = setTimeout(() => proc.kill(), timeout);
+
+  const exitCode = await proc.exited;
+  clearTimeout(timer);
+
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+
+  return { stdout, stderr, exitCode };
+}
+
+async function runBin(
+  args: string[],
+  opts: RunCliOptions = { cwd: process.cwd() },
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const env = {
+    ...process.env,
+    ...(opts.env ?? {}),
+  };
+
+  delete env.SYMPHONY_SILENT_LOGS;
+
+  const proc = Bun.spawn(["bun", BIN_PATH, ...args], {
     cwd: opts.cwd,
     stdout: "pipe",
     stderr: "pipe",
@@ -293,6 +326,14 @@ describe("CLI flag parsing", () => {
 
   it("--help exits 0", async () => {
     const { exitCode, stdout } = await runCli(["--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("symphony-beads");
+    expect(stdout).toContain("start");
+    expect(stdout).toContain("--foreground");
+  });
+
+  it("bin wrapper --help exits 0", async () => {
+    const { exitCode, stdout } = await runBin(["--help"]);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("symphony-beads");
     expect(stdout).toContain("start");

@@ -211,7 +211,7 @@ async function runCommand(args: Args): Promise<void> {
   await handler(args);
 }
 
-async function main(): Promise<void> {
+export async function runCli(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
   if (args.json) {
@@ -224,8 +224,8 @@ async function main(): Promise<void> {
   await runCommand(args);
 }
 
-if (import.meta.main || process.argv[1]?.endsWith("/cli.ts")) {
-  main().catch((error) => {
+export function runCliWithErrorHandling(): void {
+  void runCli().catch((error) => {
     if (isJsonMode()) {
       console.error(JSON.stringify({ error: String(error) }));
     } else {
@@ -233,6 +233,10 @@ if (import.meta.main || process.argv[1]?.endsWith("/cli.ts")) {
     }
     process.exit(1);
   });
+}
+
+if (import.meta.main || /(?:^|[\\/])cli\.ts$/.test(process.argv[1] ?? "")) {
+  runCliWithErrorHandling();
 }
 
 export { findProjectRoot, resolveConfigPaths } from "./cli/workflow.ts";

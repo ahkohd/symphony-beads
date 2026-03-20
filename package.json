@@ -15,7 +15,8 @@
     "access": "public"
   },
   "bin": {
-    "symphony": "bin/symphony"
+    "symphony": "bin/symphony",
+    "symphony-beads": "bin/symphony"
   },
   "scripts": {
     "start": "bun run src/cli.ts start",

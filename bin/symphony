@@ -1,3 +1,5 @@
 #!/usr/bin/env bun
 
-import "../src/cli.ts";
+import { runCliWithErrorHandling } from "../src/cli.ts";
+
+runCliWithErrorHandling();
