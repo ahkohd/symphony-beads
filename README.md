@@ -13,8 +13,9 @@ Built on [Beads](https://github.com/steveyegge/beads) and [Bun](https://bun.sh),
 - [Quick start](#quick-start-5-minutes)
 - [First-run checklist](#first-run-checklist)
 - [Daily operator workflow](#daily-operator-workflow)
-- [Creating tickets (human or agent)](#creating-tickets-human-or-agent)
+- [Creating tickets via agents](#creating-tickets-via-agents)
 - [CLI reference](#cli-reference)
+- [Kanban](#kanban)
 - [Runtime isolation and instance IDs](#runtime-isolation-and-instance-ids)
 - [WORKFLOW.md configuration](#workflowmd-configuration)
 - [Model routing and per-ticket model selection](#model-routing-and-per-ticket-model-selection)
@@ -48,7 +49,8 @@ bun link    # installs the `symphony` command globally
 
 ```bash
 cd your-project
-bd init --quiet
+
+# Ask your coding agent to initialize Beads in this repo
 
 # Option A: export full clone URL
 export REPO_URL="https://github.com/owner/repo.git"
@@ -59,7 +61,7 @@ symphony init
 symphony validate --strict
 symphony doctor
 
-bd create "Implement feature X" -p 1 -t feature
+# Ask your coding agent to create the first ticket in Beads
 symphony start
 symphony status
 symphony logs -f
@@ -95,23 +97,17 @@ symphony stop --id <instance-id-or-unique-prefix>
 symphony stop --all
 ```
 
-## Creating tickets (human or agent)
+## Creating tickets via agents
 
-You can create and update Beads tickets yourself, or ask your coding agent to run the same `bd` commands.
+Beads operations are agent-facing in this workflow. Humans are expected to ask their coding agent to create and update tickets.
 
-Examples:
+Example requests to your agent:
 
-```bash
-# Human or agent: create a new issue
-bd create "Fix flaky CI test suite" -t bug -p 1 -d "Intermittent failure in parser tests"
-
-# Human or agent: assign a specific model override when creating
-bd create "Migrate auth flow" -t feature -p 1 --metadata '{"model":"claude-opus-4-6"}'
-
-# Existing issue: set or clear model override
-bd update bd-42 --set-metadata model=claude-opus-4-6
-bd update bd-42 --unset-metadata model
-```
+- "Create a P1 bug ticket in Beads: Fix flaky CI test suite. Description: Intermittent failure in parser tests."
+- "Create a feature ticket for Migrate auth flow and set metadata model=claude-opus-4-6."
+- "Create a ticket for docs cleanup and set it to deferred (backlog)."
+- "For issue bd-42, set metadata model=claude-opus-4-6."
+- "For issue bd-42, clear metadata model."
 
 When model metadata is present, Symphony uses it as the highest-priority model routing signal (see model routing section below).
 
@@ -157,6 +153,27 @@ Doctor flags:
   --dry-run         Preview fixes without applying changes (requires --fix)
 ```
 
+## Kanban
+
+Launch the TUI board:
+
+```bash
+symphony kanban
+```
+
+Kanban is an operator view for triage and monitoring. Ticket creation remains agent-driven (`n` shows guidance to ask your coding agent).
+
+- `j/k` or arrows: move selection
+- `g/G`: jump to top/bottom in active column
+- `m/M`: move status forward/backward
+- `b/B`: defer/promote backlog
+- `r`: refresh
+- `q`: quit
+
+Placeholder screenshot (replace later):
+
+![Kanban screenshot placeholder](https://broken-link.example.com/symphony-kanban.png)
+
 ## Runtime isolation and instance IDs
 
 ### Isolation model
@@ -174,9 +191,9 @@ Example overlap (invalid):
 
 Instance IDs are deterministic from absolute project path.
 
-- `start --json` → top-level `instance_id`
-- `status --json` → `service.instance_id`
-- `instances --json` → `instances[].id`
+- `start --json`: top-level `instance_id`
+- `status --json`: `service.instance_id`
+- `instances --json`: `instances[].id`
 
 Prefix behavior for `stop --id`:
 
@@ -291,11 +308,7 @@ Notes:
 - For non-`pi` runners, use an equivalent command that accepts a model argument (still via `$SYMPHONY_MODEL`).
 - Legacy fixed model is still supported via `runner.model` when `runner.models` is not set.
 
-You can set per-issue model override directly in Beads:
-
-```bash
-bd update bd-42 --set-metadata model=claude-opus-4-6
-```
+To set a per-issue model override, ask your agent to update issue metadata in Beads (for example: set `model=claude-opus-4-6` on `bd-42`).
 
 ## Issue lifecycle and backlog
 
@@ -314,17 +327,15 @@ open <-> deferred (backlog)
 | `review`, `blocked`, `deferred` | do not dispatch; running agent is stopped |
 | `closed`, `cancelled`, `duplicate` | terminal; workspace cleaned |
 
-Backlog helpers:
+Backlog helpers (via agent requests):
 
-```bash
-bd update bd-42 -s deferred   # park in backlog
-bd update bd-42 -s open       # promote back to active
-```
+- "Move bd-42 to deferred (backlog)."
+- "Move bd-42 back to open."
 
 Kanban backlog shortcuts:
 
-- `b` → move selected issue to backlog (`deferred`)
-- `B` → promote selected issue from backlog (`open`)
+- `b`: move selected issue to backlog (`deferred`)
+- `B`: promote selected issue from backlog (`open`)
 
 
 ## Validate and doctor
@@ -395,8 +406,9 @@ symphony doctor
 
 ### Beads DB missing
 
+Ask your coding agent to initialize Beads, then re-run:
+
 ```bash
-bd init
 symphony doctor
 ```
 

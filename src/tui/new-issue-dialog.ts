@@ -2,7 +2,7 @@
 // New Issue Dialog — workflow guidance modal
 //
 // Creating issues directly from the Kanban TUI is intentionally disabled.
-// This modal guides users to create issues through their agent/Beads CLI.
+// This modal guides users to request ticket creation through their coding agent.
 //
 // Usage:
 //   const dialog = new NewIssueDialog(renderer);
@@ -32,7 +32,6 @@ const COLORS = {
 } as const;
 
 const PANEL_DIVIDER = "\u2500".repeat(62);
-const CREATE_COMMAND = 'bd create "Issue title" -t task -p 2 -d "Describe the work"';
 
 // -- Dialog ------------------------------------------------------------------
 
@@ -83,17 +82,21 @@ export class NewIssueDialog {
           gap: 1,
         },
         Text({
-          content: " Create ticket via Beads",
+          content: " Create ticket via agent",
           fg: COLORS.accent,
           attributes: 1,
         }),
         Text({ content: PANEL_DIVIDER, fg: COLORS.border }),
         Text({
-          content: "Ask your agent to create tickets with Beads.",
+          content: "Ask your coding agent to create the ticket in Beads.",
           fg: COLORS.text,
           wrapMode: "word",
         }),
-        Text({ content: `  ${CREATE_COMMAND}`, fg: COLORS.cyan, wrapMode: "word" }),
+        Text({
+          content: "Humans are not expected to run Beads commands directly.",
+          fg: COLORS.cyan,
+          wrapMode: "word",
+        }),
         Text({
           content: "Then return to Kanban and press r to refresh.",
           fg: COLORS.textDim,
