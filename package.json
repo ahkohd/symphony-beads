@@ -3,6 +3,14 @@
   "version": "0.1.4",
   "type": "module",
   "description": "Symphony implementation for Beads issue tracker",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ahkohd/symphony-beads.git"
+  },
+  "homepage": "https://github.com/ahkohd/symphony-beads",
+  "bugs": {
+    "url": "https://github.com/ahkohd/symphony-beads/issues"
+  },
   "publishConfig": {
     "access": "public"
   },
