@@ -82,7 +82,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     const selectedIssue = items[cursor.row];
     if (!selectedIssue) return;
 
-    const scrollbox = renderer.root.getRenderable(makeColumnScrollboxId(col.key));
+    const scrollbox = renderer.root.findDescendantById(makeColumnScrollboxId(col.key));
     if (!scrollbox) return;
 
     const maybeScrollbox = scrollbox as unknown as {
@@ -293,7 +293,7 @@ function KanbanApp({ renderer }: { renderer: Awaited<ReturnType<typeof createCli
     const col = COLUMNS[cursor.col];
     if (!col) return null;
     return (
-      (renderer.root.getRenderable(makeColumnScrollboxId(col.key)) as
+      (renderer.root.findDescendantById(makeColumnScrollboxId(col.key)) as
         | ScrollBoxRenderableAPI
         | null
         | undefined) ?? null
