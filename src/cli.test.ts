@@ -1569,7 +1569,7 @@ describe("CLI stop", () => {
 // ---------------------------------------------------------------------------
 
 describe("CLI init", () => {
-  it("init creates a WORKFLOW.md", async () => {
+  it("init creates a WORKFLOW.md and seeds runtime dolt ignores", async () => {
     const initDir = await mkdtemp(join(tmpdir(), "symphony-init-test-"));
     try {
       await runCli(["init", "--workflow", join(initDir, "WORKFLOW.md")], {
@@ -1581,6 +1581,37 @@ describe("CLI init", () => {
       const content = await wf.text();
       expect(content).toContain("tracker:");
       expect(content).toContain("workspace:");
+
+      const gitignore = Bun.file(join(initDir, ".gitignore"));
+      expect(await gitignore.exists()).toBe(true);
+      const gitignoreText = await gitignore.text();
+      expect(gitignoreText).toContain("dolt-server.lock");
+      expect(gitignoreText).toContain("dolt-server.log");
+      expect(gitignoreText).toContain("dolt-server.pid");
+      expect(gitignoreText).toContain("dolt-server.port");
+    } finally {
+      await rm(initDir, { recursive: true, force: true });
+    }
+  });
+
+  it("init does not duplicate existing dolt runtime ignore patterns", async () => {
+    const initDir = await mkdtemp(join(tmpdir(), "symphony-init-gitignore-test-"));
+    try {
+      await writeFile(join(initDir, ".gitignore"), "# Existing\ndolt-server.lock\n");
+
+      await runCli(["init", "--workflow", join(initDir, "WORKFLOW.md")], {
+        cwd: initDir,
+      });
+
+      const gitignoreText = await Bun.file(join(initDir, ".gitignore")).text();
+      const count = (line: string): number => {
+        return gitignoreText.split(/\r?\n/).filter((value) => value === line).length;
+      };
+
+      expect(count("dolt-server.lock")).toBe(1);
+      expect(count("dolt-server.log")).toBe(1);
+      expect(count("dolt-server.pid")).toBe(1);
+      expect(count("dolt-server.port")).toBe(1);
     } finally {
       await rm(initDir, { recursive: true, force: true });
     }
