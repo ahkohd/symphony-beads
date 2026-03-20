@@ -172,7 +172,7 @@ Kanban is an operator view for triage and monitoring. Ticket creation remains ag
 
 Kanban screenshot:
 
-![Kanban screenshot](https://github.com/user-attachments/assets/54421b0e-31a4-43aa-8ecc-b51c3cc0c305)
+![Kanban screenshot](https://github.com/user-attachments/assets/991a5cdb-ba2b-48fb-bab3-0fef68b3b36a)
 
 ## Runtime isolation and instance IDs
 
