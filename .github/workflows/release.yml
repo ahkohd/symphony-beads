@@ -91,7 +91,7 @@ jobs:
 
       - name: Publish to npm
         if: ${{ !inputs.dry_run }}
-        run: npm publish --provenance
+        run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -103,4 +103,4 @@ jobs:
           echo "- New version: ${{ steps.version.outputs.new }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Would commit/tag/push v${{ steps.version.outputs.new }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Would publish to npm" >> "$GITHUB_STEP_SUMMARY"
-          npm publish --dry-run
+          npm publish --dry-run --access public
