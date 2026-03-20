@@ -10,7 +10,7 @@ Built on [Beads](https://github.com/steveyegge/beads) and [Bun](https://bun.sh),
 
 - [Requirements](#requirements)
 - [Install](#install)
-- [Quick start (5 minutes)](#quick-start-5-minutes)
+- [Quick start](#quick-start-5-minutes)
 - [First-run checklist](#first-run-checklist)
 - [Daily operator workflow](#daily-operator-workflow)
 - [Creating tickets (human or agent)](#creating-tickets-human-or-agent)
@@ -44,7 +44,7 @@ bun install
 bun link    # installs the `symphony` command globally
 ```
 
-## Quick start (5 minutes)
+## Quick start
 
 ```bash
 cd your-project
@@ -188,7 +188,7 @@ Prefix behavior for `stop --id`:
 
 `WORKFLOW.md` has YAML front-matter and prompt body.
 
-### Front-matter example (aligned with `symphony init` defaults)
+Front-matter example (aligned with `symphony init` defaults)
 
 ```yaml
 ---
