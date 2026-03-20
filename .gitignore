@@ -7,6 +7,12 @@
 workspaces/
 symphony.log
 
+# Dolt server runtime artifacts
+dolt-server.lock
+dolt-server.log
+dolt-server.pid
+dolt-server.port
+
 # Workspace artifacts
 TASK.md
 AGENTS.md
